@@ -1,4 +1,5 @@
 const CategoryModel = require('../models/categoryModel');
+const ProductModel = require('../models/productModel');
 
 exports.getAllCategories = async (req, res) => {
   try {
@@ -21,7 +22,12 @@ exports.getCategoryById = async (req, res) => {
 };
 
 exports.createCategory = async (req, res) => {
+  const { category_name } = req.body;
   try {
+    const existing = await CategoryModel.findByName(category_name);
+    if (existing) {
+      return res.status(400).json({ success: false, message: 'Tên danh mục đã tồn tại' });
+    }
     const data = await CategoryModel.create(req.body);
     res.status(201).json({ success: true, data });
   } catch (error) {
@@ -31,7 +37,12 @@ exports.createCategory = async (req, res) => {
 
 exports.updateCategory = async (req, res) => {
   const { id } = req.params;
+  const { category_name } = req.body;
   try {
+    const existing = await CategoryModel.findByName(category_name);
+    if (existing && existing.id != id) {
+      return res.status(400).json({ success: false, message: 'Tên danh mục đã trùng với danh mục khác' });
+    }
     const data = await CategoryModel.update(id, req.body);
     res.status(200).json({ success: true, data });
   } catch (error) {
@@ -42,6 +53,11 @@ exports.updateCategory = async (req, res) => {
 exports.deleteCategory = async (req, res) => {
   const { id } = req.params;
   try {
+    const products = await ProductModel.getAll(id);
+    if (products.length > 0) {
+      return res.status(400).json({ success: false, message: 'Không thể xóa danh mục đang có chứa sản phẩm' });
+    }
+
     await CategoryModel.delete(id);
     res.status(200).json({ success: true, message: 'Deleted successfully' });
   } catch (error) {

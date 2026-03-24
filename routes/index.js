@@ -8,95 +8,32 @@ const categoryController = require('../controllers/categoryController');
 const orderController = require('../controllers/orderController');
 const authController = require('../controllers/authController');
 const statisticsController = require('../controllers/statisticsController');
+const stockController = require('../controllers/stockController');
+const mediaController = require('../controllers/mediaController');
 
 // Middlewares
 const { protect } = require('../middlewares/commonMiddleware');
+const uploadCloud = require('../config/cloudinary');
 
-/**
- * @swagger
- * /auth/register:
- *   post:
- *     summary: Register a new user
- *     tags: [Auth]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               full_name: { type: string }
- *               email: { type: string }
- *               password: { type: string }
- *               role: { type: string }
- */
+// --- Auth ---
 router.post('/auth/register', authController.register);
-
-/**
- * @swagger
- * /auth/login:
- *   post:
- *     summary: Login and get JWT
- *     tags: [Auth]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               email: { type: string }
- *               password: { type: string }
- */
 router.post('/auth/login', authController.login);
 
-// --- Public Access Routes ---
-/**
- * @swagger
- * /tables:
- *   get:
- *     summary: Lấy danh sách bàn
- *     tags: [Public]
- */
+// --- Media Library ---
+router.get('/media', protect, mediaController.getGallery);
+router.post('/upload', protect, uploadCloud.single('image'), mediaController.handleUpload);
+router.delete('/media/:id', protect, mediaController.deleteMedia);
+
+// --- Public Access ---
 router.get('/tables', tableController.getAllTables);
-
-/**
- * @swagger
- * /categories:
- *   get:
- *     summary: Lấy danh sách danh mục
- *     tags: [Public]
- */
 router.get('/categories', categoryController.getAllCategories);
-
-/**
- * @swagger
- * /products:
- *   get:
- *     summary: Lấy danh sách sản phẩm
- *     tags: [Public]
- */
 router.get('/products', productController.getAllProducts);
 router.get('/products/:id', productController.getProductById);
 
-/**
- * @swagger
- * /orders:
- *   post:
- *     summary: Khách gọi món (Tạo đơn hàng)
- *     tags: [Public]
- */
-router.post('/orders', orderController.createOrder); // Ordering is public
-router.get('/orders/table-id/:tableId', orderController.getOrdersByTable); // For customer tracking
+router.post('/orders', orderController.createOrder); 
+router.get('/orders/table-id/:tableId', orderController.getOrdersByTable);
 
-// --- Private Access Routes (Staff/Admin only) ---
-/**
- * @swagger
- * /tables:
- *   post:
- *     summary: Thêm bàn mới (Admin)
- *     tags: [Admin - Tables]
- */
+// --- Admin Protected ---
 router.post('/tables', protect, tableController.createTable);
 router.put('/tables/:id', protect, tableController.updateTable);
 router.delete('/tables/:id', protect, tableController.deleteTable);
@@ -115,14 +52,14 @@ router.get('/orders/:id', protect, orderController.getOrderById);
 router.patch('/orders/:id/status', protect, orderController.updateOrderStatus);
 router.delete('/orders/:id', protect, orderController.deleteOrder);
 
-// --- Statistics (Admin only) ---
-/**
- * @swagger
- * /stats/revenue:
- *   get:
- *     summary: Thống kê doanh thu (Admin)
- *     tags: [Admin - Statistics]
- */
+// --- Stock ---
+router.get('/stock', protect, stockController.getAllStock);
+router.post('/stock', protect, stockController.addStock);
+router.put('/stock/:id', protect, stockController.updateStock);
+router.get('/stock/:id/history', protect, stockController.getHistory);
+router.delete('/stock/:id', protect, stockController.removeStock);
+
+// --- Stats ---
 router.get('/stats/revenue', protect, statisticsController.getRevenueStats);
 
 module.exports = router;

@@ -2,12 +2,17 @@ const db = require('../config/db');
 
 class CategoryModel {
   static async getAll() {
-    const { rows } = await db.query('SELECT * FROM categories ORDER BY id ASC');
+    const { rows } = await db.query('SELECT * FROM categories ORDER BY id DESC');
     return rows;
   }
 
   static async findById(id) {
     const { rows } = await db.query('SELECT * FROM categories WHERE id = $1', [id]);
+    return rows[0];
+  }
+
+  static async findByName(name) {
+    const { rows } = await db.query('SELECT * FROM categories WHERE category_name = $1', [name]);
     return rows[0];
   }
 

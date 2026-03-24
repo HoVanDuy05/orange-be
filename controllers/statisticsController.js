@@ -2,14 +2,15 @@ const StatisticsModel = require('../models/statisticsModel');
 
 exports.getRevenueStats = async (req, res) => {
   try {
-    const dailyRevenue = await StatisticsModel.getDailyRevenue();
+    const { type = 'daily' } = req.query; // 'daily', 'monthly', 'yearly', 'hourly'
+    const financialStats = await StatisticsModel.getFinancialStats(type);
     const categoriesRevenue = await StatisticsModel.getRevenueByCategory();
     const topProducts = await StatisticsModel.getMostSoldProducts();
 
     res.status(200).json({
       success: true,
       data: {
-        daily: dailyRevenue,
+        financial: financialStats,
         byCategory: categoriesRevenue,
         topProducts: topProducts
       }
