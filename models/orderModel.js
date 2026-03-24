@@ -2,7 +2,17 @@ const db = require('../config/db');
 
 class OrderModel {
   static async getAll() {
-    const { rows } = await db.query('SELECT * FROM orders ORDER BY created_at DESC');
+    const { rows } = await db.query(`
+      SELECT 
+        o.*,
+        dt.table_name,
+        COUNT(oi.id)::int AS item_count
+      FROM orders o
+      LEFT JOIN dining_tables dt ON dt.id = o.table_id
+      LEFT JOIN order_items oi ON oi.order_id = o.id
+      GROUP BY o.id, dt.table_name
+      ORDER BY o.created_at DESC
+    `);
     return rows;
   }
 
