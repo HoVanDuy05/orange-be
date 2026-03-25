@@ -32,12 +32,12 @@ class OrderModel {
     return rows;
   }
 
-  static async createOrder({ table_id, items, note }) {
+  static async createOrder({ table_id, items, note, customer_name, customer_phone }) {
     try {
       await db.query('BEGIN');
       const { rows: orderRows } = await db.query(
-        'INSERT INTO orders (table_id, note) VALUES ($1, $2) RETURNING *',
-        [table_id, note]
+        'INSERT INTO orders (table_id, note, customer_name, customer_phone) VALUES ($1, $2, $3, $4) RETURNING *',
+        [table_id || null, note, customer_name, customer_phone]
       );
       const orderId = orderRows[0].id;
       let totalAmount = 0;
@@ -50,13 +50,25 @@ class OrderModel {
         totalAmount += quantity * unit_price;
       }
       await db.query('UPDATE orders SET total_amount = $1 WHERE id = $2', [totalAmount, orderId]);
-      await db.query('UPDATE dining_tables SET table_status = \'occupied\' WHERE id = $1', [table_id]);
+      
+      if (table_id) {
+        await db.query('UPDATE dining_tables SET table_status = \'occupied\' WHERE id = $1', [table_id]);
+      }
+      
       await db.query('COMMIT');
       return { ...orderRows[0], total_amount: totalAmount };
     } catch (error) {
       await db.query('ROLLBACK');
       throw error;
     }
+  }
+
+  static async getOrdersByPhone(phone) {
+    const { rows } = await db.query(
+      'SELECT o.*, (SELECT json_agg(oi.*) FROM order_items oi WHERE oi.order_id = o.id) as items FROM orders o WHERE customer_phone = $1 ORDER BY created_at DESC',
+      [phone]
+    );
+    return rows;
   }
 
   static async updateStatus(id, status) {

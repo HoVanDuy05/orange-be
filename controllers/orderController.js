@@ -59,3 +59,12 @@ exports.updateOrderStatus = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+exports.getOrdersByPhone = async (req, res) => {
+  const { phone } = req.params;
+  try {
+    const data = await OrderModel.getOrdersByPhone(phone);
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

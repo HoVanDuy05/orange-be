@@ -31,7 +31,10 @@ router.get('/products', productController.getAllProducts);
 router.get('/products/:id', productController.getProductById);
 
 router.post('/orders', orderController.createOrder); 
+router.get('/orders', orderController.getAllOrders); 
+router.get('/orders/:id', orderController.getOrderById);
 router.get('/orders/table-id/:tableId', orderController.getOrdersByTable);
+router.get('/orders/phone/:phone', orderController.getOrdersByPhone);
 
 // --- Admin Protected ---
 router.post('/tables', protect, tableController.createTable);
@@ -47,8 +50,6 @@ router.post('/products', protect, productController.createProduct);
 router.put('/products/:id', protect, productController.updateProduct);
 router.delete('/products/:id', protect, productController.deleteProduct);
 
-router.get('/orders', protect, orderController.getAllOrders);
-router.get('/orders/:id', protect, orderController.getOrderById);
 router.patch('/orders/:id/status', protect, orderController.updateOrderStatus);
 router.delete('/orders/:id', protect, orderController.deleteOrder);
 

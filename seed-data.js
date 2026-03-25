@@ -1,3 +1,6 @@
+const dns = require('dns');
+// Force Node to prefer IPv4 over IPv6 to fix ENETUNREACH errors
+dns.setDefaultResultOrder('ipv4first');
 const db = require('./config/db');
 
 async function seedData() {
@@ -36,11 +39,11 @@ async function seedData() {
     console.log('Inserting Products...');
     const { rows: foodCats } = await db.query("SELECT id FROM categories WHERE category_name = 'Đồ ăn' LIMIT 1");
     const { rows: drinkCats } = await db.query("SELECT id FROM categories WHERE category_name = 'Thức uống' LIMIT 1");
-    
+
     if (foodCats.length > 0 && drinkCats.length > 0) {
       const foodId = foodCats[0].id;
       const drinkId = drinkCats[0].id;
-      
+
       await db.query(`
         INSERT INTO products (category_id, product_name, description, price, image_url) 
         VALUES 

@@ -1,3 +1,6 @@
+const dns = require('dns');
+// Force Node to prefer IPv4 over IPv6 to fix ENETUNREACH errors
+dns.setDefaultResultOrder('ipv4first');
 const db = require('./config/db');
 
 async function test() {

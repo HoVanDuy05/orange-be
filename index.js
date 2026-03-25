@@ -1,6 +1,9 @@
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
+const dns = require('dns');
+// Force Node to prefer IPv4 over IPv6 to fix ENETUNREACH errors with Supabase/Neon
+dns.setDefaultResultOrder('ipv4first');
 require('dotenv').config();
 
 const app = express();

@@ -2,6 +2,9 @@
  * Migration: Thêm các cột mới cho products và seed dữ liệu đơn hàng mẫu
  * Chạy bằng: node migrate.js
  */
+const dns = require('dns');
+// Force Node to prefer IPv4 over IPv6 to fix ENETUNREACH errors
+dns.setDefaultResultOrder('ipv4first');
 const db = require('./config/db');
 
 async function migrate() {
@@ -60,7 +63,7 @@ async function migrate() {
 
     // Kiểm tra có đơn hàng chưa
     const { rows: existingOrders } = await db.query('SELECT COUNT(*) as count FROM orders');
-    
+
     if (parseInt(existingOrders[0].count) > 0) {
       console.log(`ℹ️  Đã có ${existingOrders[0].count} đơn hàng trong DB. Bỏ qua seed.`);
     } else {
@@ -130,7 +133,7 @@ async function migrate() {
 
     console.log('\n=== MIGRATION HOÀN TẤT ✅ ===');
   } catch (err) {
-    await db.query('ROLLBACK').catch(() => {});
+    await db.query('ROLLBACK').catch(() => { });
     console.error('❌ LỖI MIGRATION:', err.message);
   } finally {
     process.exit(0);
