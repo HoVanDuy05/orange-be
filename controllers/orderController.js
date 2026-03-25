@@ -51,9 +51,9 @@ exports.getOrdersByTable = async (req, res) => {
 
 exports.updateOrderStatus = async (req, res) => {
   const { id } = req.params;
-  const { status } = req.body;
+  const { status, payment_method } = req.body;
   try {
-    const data = await OrderModel.updateStatus(id, status);
+    const data = await OrderModel.updateStatus(id, status, payment_method);
     res.status(200).json({ success: true, data });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

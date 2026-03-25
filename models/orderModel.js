@@ -71,13 +71,20 @@ class OrderModel {
     return rows;
   }
 
-  static async updateStatus(id, status) {
+  static async updateStatus(id, status, paymentMethod = null) {
     try {
       await db.query('BEGIN');
-      const { rows } = await db.query(
-        'UPDATE orders SET order_status = $1 WHERE id = $2 RETURNING *',
-        [status, id]
-      );
+      
+      let queryStr = 'UPDATE orders SET order_status = $1 WHERE id = $2 RETURNING *';
+      let params = [status, id];
+
+      if (paymentMethod) {
+        queryStr = 'UPDATE orders SET order_status = $1, payment_method = $3 WHERE id = $2 RETURNING *';
+        params = [status, id, paymentMethod];
+      }
+
+      const { rows } = await db.query(queryStr, params);
+      
       await db.query('INSERT INTO order_logs (order_id, status) VALUES ($1, $2)', [id, status]);
       if (status === 'paid' || status === 'cancelled') {
         const { rows: tableRows } = await db.query('SELECT table_id FROM orders WHERE id = $1', [id]);
