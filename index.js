@@ -5,6 +5,7 @@ const dns = require('dns');
 // Force Node to prefer IPv4 over IPv6 to fix ENETUNREACH errors with Supabase/Neon
 dns.setDefaultResultOrder('ipv4first');
 require('dotenv').config();
+process.env.TZ = 'Asia/Ho_Chi_Minh';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
