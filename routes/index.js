@@ -10,6 +10,7 @@ const authController = require('../controllers/authController');
 const statisticsController = require('../controllers/statisticsController');
 const stockController = require('../controllers/stockController');
 const mediaController = require('../controllers/mediaController');
+const bannerController = require('../controllers/bannerController');
 
 // Middlewares
 const { protect } = require('../middlewares/commonMiddleware');
@@ -29,6 +30,7 @@ router.get('/tables', tableController.getAllTables);
 router.get('/categories', categoryController.getAllCategories);
 router.get('/products', productController.getAllProducts);
 router.get('/products/:id', productController.getProductById);
+router.get('/banners', bannerController.getAllBanners);
 
 router.post('/orders', orderController.createOrder); 
 router.get('/orders', orderController.getAllOrders); 
@@ -52,6 +54,10 @@ router.delete('/products/:id', protect, productController.deleteProduct);
 
 router.patch('/orders/:id/status', protect, orderController.updateOrderStatus);
 router.delete('/orders/:id', protect, orderController.deleteOrder);
+
+router.post('/banners', protect, bannerController.createBanner);
+router.put('/banners/:id', protect, bannerController.updateBanner);
+router.delete('/banners/:id', protect, bannerController.deleteBanner);
 
 // --- Stock ---
 router.get('/stock', protect, stockController.getAllStock);

@@ -23,6 +23,7 @@ exports.getOrderById = async (req, res) => {
   try {
     const data = await OrderModel.findById(id);
     if (!data) return res.status(404).json({ success: false, message: 'Order not found' });
+    console.log(`[DEBUG] getOrderById ${id}:`, JSON.stringify(data.items?.[0] || 'no items', null, 2));
     res.status(200).json({ success: true, data });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

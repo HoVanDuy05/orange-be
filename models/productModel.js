@@ -1,7 +1,7 @@
 const db = require('../config/db');
 
 class ProductModel {
-  static async getAll(categoryId = null) {
+  static async getAll(categoryId = null, search = null) {
     let sql = `
       SELECT 
         p.*,
@@ -11,10 +11,20 @@ class ProductModel {
       WHERE p.is_active = true
     `;
     const params = [];
+    let paramIdx = 1;
+
     if (categoryId) {
-      sql += ' AND p.category_id = $1';
+      sql += ` AND p.category_id = $${paramIdx}`;
       params.push(categoryId);
+      paramIdx++;
     }
+
+    if (search) {
+      sql += ` AND p.product_name ILIKE $${paramIdx}`;
+      params.push(`%${search}%`);
+      paramIdx++;
+    }
+
     sql += ' GROUP BY p.id ORDER BY p.created_at DESC, p.id DESC';
     const { rows } = await db.query(sql, params);
     return rows;

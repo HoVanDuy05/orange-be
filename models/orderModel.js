@@ -6,27 +6,70 @@ class OrderModel {
       SELECT 
         o.*,
         dt.table_name,
-        COUNT(oi.id)::int AS item_count
+        COALESCE(
+          (SELECT json_agg(json_build_object(
+            'product_name', p.product_name,
+            'quantity', oi.quantity,
+            'unit_price', oi.unit_price,
+            'image_url', p.image_url
+          ))
+          FROM order_items oi
+          LEFT JOIN products p ON p.id = oi.product_id
+          WHERE oi.order_id = o.id),
+          '[]'::json
+        ) as items
       FROM orders o
       LEFT JOIN dining_tables dt ON dt.id = o.table_id
-      LEFT JOIN order_items oi ON oi.order_id = o.id
-      GROUP BY o.id, dt.table_name
       ORDER BY o.created_at DESC
     `);
     return rows;
   }
 
   static async findById(id) {
-    const { rows } = await db.query(
-      'SELECT o.*, (SELECT json_agg(oi.*) FROM order_items oi WHERE oi.order_id = o.id) as items FROM orders o WHERE id = $1',
-      [id]
-    );
+    const { rows } = await db.query(`
+      SELECT 
+        o.*,
+        dt.table_name,
+        COALESCE(
+          (SELECT json_agg(json_build_object(
+            'id', oi.id,
+            'product_id', oi.product_id,
+            'quantity', oi.quantity,
+            'unit_price', oi.unit_price,
+            'product_name', p.product_name,
+            'image_url', p.image_url
+          ))
+          FROM order_items oi
+          LEFT JOIN products p ON p.id = oi.product_id
+          WHERE oi.order_id = o.id),
+          '[]'::json
+        ) as items
+      FROM orders o
+      LEFT JOIN dining_tables dt ON dt.id = o.table_id
+      WHERE o.id = $1
+      GROUP BY o.id, dt.table_name
+    `, [id]);
+    
     return rows[0];
   }
 
   static async getOrdersByTable(tableId) {
-    const { rows } = await db.query(
-      'SELECT o.*, (SELECT json_agg(oi.*) FROM order_items oi WHERE oi.order_id = o.id) as items FROM orders o WHERE table_id = $1 ORDER BY created_at DESC',
+    const { rows } = await db.query(`
+      SELECT o.*, 
+             (SELECT json_agg(json_build_object(
+                'id', oi.id,
+                'product_id', oi.product_id,
+                'quantity', oi.quantity,
+                'unit_price', oi.unit_price,
+                'product_name', p.product_name,
+                'image_url', p.image_url
+             )) 
+              FROM order_items oi 
+              LEFT JOIN products p ON p.id = oi.product_id
+              WHERE oi.order_id = o.id) as items 
+      FROM orders o 
+      WHERE table_id = $1 
+      ORDER BY created_at DESC`,
       [tableId]
     );
     return rows;
@@ -41,14 +84,28 @@ class OrderModel {
       );
       const orderId = orderRows[0].id;
       let totalAmount = 0;
+
       for (const item of items) {
-        const { product_id, quantity, unit_price } = item;
+        const { product_id, quantity } = item;
+        
+        // 🛡️ BẢO MẬT: Lấy giá chính xác từ database, không tin tưởng giá từ client gửi lên
+        const { rows: productRows } = await db.query(
+          'SELECT price, discount_price FROM products WHERE id = $1',
+          [product_id]
+        );
+        
+        if (productRows.length === 0) continue;
+        
+        // Ưu tiên giá khuyến mãi nếu có
+        const currentPrice = Number(productRows[0].discount_price || productRows[0].price);
+        
         await db.query(
           'INSERT INTO order_items (order_id, product_id, quantity, unit_price) VALUES ($1, $2, $3, $4)',
-          [orderId, product_id, quantity, unit_price]
+          [orderId, product_id, quantity, currentPrice]
         );
-        totalAmount += quantity * unit_price;
+        totalAmount += quantity * currentPrice;
       }
+
       await db.query('UPDATE orders SET total_amount = $1 WHERE id = $2', [totalAmount, orderId]);
       
       if (table_id) {
@@ -64,8 +121,22 @@ class OrderModel {
   }
 
   static async getOrdersByPhone(phone) {
-    const { rows } = await db.query(
-      'SELECT o.*, (SELECT json_agg(oi.*) FROM order_items oi WHERE oi.order_id = o.id) as items FROM orders o WHERE customer_phone = $1 ORDER BY created_at DESC',
+    const { rows } = await db.query(`
+      SELECT o.*, 
+             (SELECT json_agg(json_build_object(
+                'id', oi.id,
+                'product_id', oi.product_id,
+                'quantity', oi.quantity,
+                'unit_price', oi.unit_price,
+                'product_name', p.product_name,
+                'image_url', p.image_url
+             )) 
+              FROM order_items oi 
+              LEFT JOIN products p ON p.id = oi.product_id
+              WHERE oi.order_id = o.id) as items 
+      FROM orders o 
+      WHERE customer_phone = $1 
+      ORDER BY created_at DESC`,
       [phone]
     );
     return rows;
