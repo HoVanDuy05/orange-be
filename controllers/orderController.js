@@ -50,11 +50,33 @@ exports.getOrdersByTable = async (req, res) => {
   }
 };
 
+const PushController = require('./pushController');
+
 exports.updateOrderStatus = async (req, res) => {
   const { id } = req.params;
   const { status, payment_method, cancel_reason } = req.body;
   try {
     const data = await OrderModel.updateStatus(id, status, payment_method || null, cancel_reason || null);
+    
+    // 🚀 GỬI PUSH NOTIFICATION (Nếu là trạng thái quan trọng)
+    if (data && data.customer_phone) {
+      if (status === 'done') {
+        PushController.sendNotification(
+          data.customer_phone,
+          '🍜 ĐÃ XONG! MỜI BẠN NHẬN MÓN',
+          `Đơn hàng #${id} của bạn đã hoàn tất. Vui lòng tới quầy nhận món nhé!`,
+          { url: `/order-detail/${id}` }
+        );
+      } else if (status === 'cancelled') {
+        PushController.sendNotification(
+          data.customer_phone,
+          '❌ ĐƠN HÀNG ĐÃ BỊ HUỶ',
+          `Đơn hàng #${id} đã bị hủy. ${cancel_reason ? `Lý do: ${cancel_reason}` : 'Vui lòng liên hệ quầy để biết thêm chi tiết.'}`,
+          { url: `/order-detail/${id}` }
+        );
+      }
+    }
+
     res.status(200).json({ success: true, data });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

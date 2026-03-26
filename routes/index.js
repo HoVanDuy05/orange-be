@@ -11,6 +11,7 @@ const statisticsController = require('../controllers/statisticsController');
 const stockController = require('../controllers/stockController');
 const mediaController = require('../controllers/mediaController');
 const bannerController = require('../controllers/bannerController');
+const pushRoutes = require('./pushRoutes');
 
 // Middlewares
 const { protect } = require('../middlewares/commonMiddleware');
@@ -37,6 +38,7 @@ router.get('/orders', orderController.getAllOrders);
 router.get('/orders/:id', orderController.getOrderById);
 router.get('/orders/table-id/:tableId', orderController.getOrdersByTable);
 router.get('/orders/phone/:phone', orderController.getOrdersByPhone);
+router.use('/push', pushRoutes);
 
 // --- Admin Protected ---
 router.post('/tables', protect, tableController.createTable);
