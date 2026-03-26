@@ -166,7 +166,7 @@ class OrderModel {
       const { rows } = await db.query(queryStr, params);
 
       await db.query('INSERT INTO order_logs (order_id, status) VALUES ($1, $2)', [id, status]);
-      if (status === 'paid' || status === 'cancelled') {
+      if (status === 'done' || status === 'cancelled') {
         const { rows: tableRows } = await db.query('SELECT table_id FROM orders WHERE id = $1', [id]);
         if (tableRows.length > 0 && tableRows[0].table_id) {
           await db.query('UPDATE dining_tables SET table_status = \'empty\' WHERE id = $1', [tableRows[0].table_id]);

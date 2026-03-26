@@ -16,7 +16,7 @@ class StatisticsModel {
       revenueSql = `
         SELECT DATE(updated_at) as time_label, SUM(total_amount) as revenue
         FROM orders
-        WHERE order_status = 'paid'
+        WHERE order_status = 'done'
         GROUP BY 1
         ORDER BY 1
       `;
@@ -30,7 +30,7 @@ class StatisticsModel {
       revenueSql = `
         SELECT TO_CHAR(updated_at, 'YYYY-MM') as time_label, SUM(total_amount) as revenue
         FROM orders
-        WHERE order_status = 'paid'
+        WHERE order_status = 'done'
         GROUP BY 1
         ORDER BY 1
       `;
@@ -44,7 +44,7 @@ class StatisticsModel {
       revenueSql = `
         SELECT TO_CHAR(updated_at, 'YYYY') as time_label, SUM(total_amount) as revenue
         FROM orders
-        WHERE order_status = 'paid'
+        WHERE order_status = 'done'
         GROUP BY 1
         ORDER BY 1
       `;
@@ -58,7 +58,7 @@ class StatisticsModel {
       revenueSql = `
         SELECT TO_CHAR(updated_at, 'HH24:00') as time_label, SUM(total_amount) as revenue
         FROM orders
-        WHERE order_status = 'paid' AND DATE(updated_at) = CURRENT_DATE
+        WHERE order_status = 'done' AND DATE(updated_at) = CURRENT_DATE
         GROUP BY 1
         ORDER BY 1
       `;
@@ -102,7 +102,7 @@ class StatisticsModel {
       JOIN products p ON oi.product_id = p.id
       JOIN categories c ON p.category_id = c.id
       JOIN orders o ON oi.order_id = o.id
-      WHERE o.order_status = 'paid'
+      WHERE o.order_status = 'done'
       GROUP BY c.category_name
       ORDER BY revenue DESC;
     `;
@@ -118,7 +118,7 @@ class StatisticsModel {
       FROM order_items oi
       JOIN products p ON oi.product_id = p.id
       JOIN orders o ON oi.order_id = o.id
-      WHERE o.order_status = 'paid'
+      WHERE o.order_status = 'done'
       GROUP BY p.product_name
       ORDER BY total_sold DESC
       LIMIT 10;

@@ -32,8 +32,8 @@ router.get('/products', productController.getAllProducts);
 router.get('/products/:id', productController.getProductById);
 router.get('/banners', bannerController.getAllBanners);
 
-router.post('/orders', orderController.createOrder); 
-router.get('/orders', orderController.getAllOrders); 
+router.post('/orders', orderController.createOrder);
+router.get('/orders', orderController.getAllOrders);
 router.get('/orders/:id', orderController.getOrderById);
 router.get('/orders/table-id/:tableId', orderController.getOrdersByTable);
 router.get('/orders/phone/:phone', orderController.getOrdersByPhone);
