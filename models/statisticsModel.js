@@ -3,27 +3,72 @@ const db = require('../config/db');
 class StatisticsModel {
   /**
    * Get overall stats including cost and profit
-   * type: 'daily', 'monthly', 'yearly'
+   * Revenue is calculated from orders with order_status = 'paid'
+   * type: 'daily', 'monthly', 'yearly', 'hourly'
    */
-  static async getFinancialStats(type = 'daily', year = null, month = null) {
+  static async getFinancialStats(type = 'daily') {
     let revenueSql = '';
     let costSql = '';
-    let groupFormat = '';
-    let dateRangeSql = '';
 
+    // Revenue queries: use orders table with order_status = 'paid'
+    // updated_at tracks when status was last changed (to 'paid')
     if (type === 'daily') {
-      groupFormat = 'DATE(paid_at)';
-      revenueSql = `SELECT DATE(paid_at) as time_label, SUM(amount) as revenue FROM payments WHERE payment_status = 'success' GROUP BY 1`;
-      costSql = `SELECT DATE(stock_date) as time_label, SUM(quantity * unit_price) as cost FROM stock_in GROUP BY 1`;
+      revenueSql = `
+        SELECT DATE(updated_at) as time_label, SUM(total_amount) as revenue
+        FROM orders
+        WHERE order_status = 'paid'
+        GROUP BY 1
+        ORDER BY 1
+      `;
+      costSql = `
+        SELECT DATE(stock_date) as time_label, SUM(quantity * unit_price) as cost
+        FROM stock_in
+        GROUP BY 1
+        ORDER BY 1
+      `;
     } else if (type === 'monthly') {
-      revenueSql = `SELECT TO_CHAR(paid_at, 'YYYY-MM') as time_label, SUM(amount) as revenue FROM payments WHERE payment_status = 'success' GROUP BY 1`;
-      costSql = `SELECT TO_CHAR(stock_date, 'YYYY-MM') as time_label, SUM(quantity * unit_price) as cost FROM stock_in GROUP BY 1`;
+      revenueSql = `
+        SELECT TO_CHAR(updated_at, 'YYYY-MM') as time_label, SUM(total_amount) as revenue
+        FROM orders
+        WHERE order_status = 'paid'
+        GROUP BY 1
+        ORDER BY 1
+      `;
+      costSql = `
+        SELECT TO_CHAR(stock_date, 'YYYY-MM') as time_label, SUM(quantity * unit_price) as cost
+        FROM stock_in
+        GROUP BY 1
+        ORDER BY 1
+      `;
     } else if (type === 'yearly') {
-      revenueSql = `SELECT TO_CHAR(paid_at, 'YYYY') as time_label, SUM(amount) as revenue FROM payments WHERE payment_status = 'success' GROUP BY 1`;
-      costSql = `SELECT TO_CHAR(stock_date, 'YYYY') as time_label, SUM(quantity * unit_price) as cost FROM stock_in GROUP BY 1`;
+      revenueSql = `
+        SELECT TO_CHAR(updated_at, 'YYYY') as time_label, SUM(total_amount) as revenue
+        FROM orders
+        WHERE order_status = 'paid'
+        GROUP BY 1
+        ORDER BY 1
+      `;
+      costSql = `
+        SELECT TO_CHAR(stock_date, 'YYYY') as time_label, SUM(quantity * unit_price) as cost
+        FROM stock_in
+        GROUP BY 1
+        ORDER BY 1
+      `;
     } else if (type === 'hourly') {
-       revenueSql = `SELECT TO_CHAR(paid_at, 'HH24:00') as time_label, SUM(amount) as revenue FROM payments WHERE payment_status = 'success' AND DATE(paid_at) = CURRENT_DATE GROUP BY 1`;
-       costSql = `SELECT TO_CHAR(stock_date, 'HH24:00') as time_label, SUM(quantity * unit_price) as cost FROM stock_in WHERE DATE(stock_date) = CURRENT_DATE GROUP BY 1`;
+      revenueSql = `
+        SELECT TO_CHAR(updated_at, 'HH24:00') as time_label, SUM(total_amount) as revenue
+        FROM orders
+        WHERE order_status = 'paid' AND DATE(updated_at) = CURRENT_DATE
+        GROUP BY 1
+        ORDER BY 1
+      `;
+      costSql = `
+        SELECT TO_CHAR(stock_date, 'HH24:00') as time_label, SUM(quantity * unit_price) as cost
+        FROM stock_in
+        WHERE DATE(stock_date) = CURRENT_DATE
+        GROUP BY 1
+        ORDER BY 1
+      `;
     }
 
     const { rows: revenueData } = await db.query(revenueSql);
@@ -32,14 +77,16 @@ class StatisticsModel {
     // Merge data by time_label
     const merged = {};
     revenueData.forEach(r => {
-      merged[r.time_label] = { time_label: r.time_label, revenue: Number(r.revenue), cost: 0, profit: Number(r.revenue) };
+      const label = r.time_label instanceof Date ? r.time_label.toISOString().slice(0, 10) : String(r.time_label);
+      merged[label] = { time_label: label, revenue: Number(r.revenue), cost: 0, profit: Number(r.revenue) };
     });
     costData.forEach(c => {
-      if (merged[c.time_label]) {
-        merged[c.time_label].cost = Number(c.cost);
-        merged[c.time_label].profit = merged[c.time_label].revenue - Number(c.cost);
+      const label = c.time_label instanceof Date ? c.time_label.toISOString().slice(0, 10) : String(c.time_label);
+      if (merged[label]) {
+        merged[label].cost = Number(c.cost);
+        merged[label].profit = merged[label].revenue - Number(c.cost);
       } else {
-        merged[c.time_label] = { time_label: c.time_label, revenue: 0, cost: Number(c.cost), profit: -Number(c.cost) };
+        merged[label] = { time_label: label, revenue: 0, cost: Number(c.cost), profit: -Number(c.cost) };
       }
     });
 

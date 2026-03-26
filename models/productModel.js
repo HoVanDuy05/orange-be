@@ -34,15 +34,18 @@ class ProductModel {
   }
 
   static async update(id, { product_name, description, price, image_url, category_id, is_active, discount_price }) {
+    // Default is_active to true if not provided to prevent product from disappearing
+    const activeValue = is_active !== undefined ? is_active : true;
     const { rows } = await db.query(
       'UPDATE products SET product_name = $1, description = $2, price = $3, image_url = $4, category_id = $5, is_active = $6, discount_price = $7 WHERE id = $8 RETURNING *',
-      [product_name, description, price, image_url, category_id, is_active, discount_price, id]
+      [product_name, description, price, image_url, category_id, activeValue, discount_price, id]
     );
     return rows[0];
   }
 
   static async delete(id) {
-    await db.query('DELETE FROM products WHERE id = $1', [id]);
+    // Soft-delete to avoid FK constraint errors from order_items referencing this product
+    await db.query('UPDATE products SET is_active = false WHERE id = $1', [id]);
     return true;
   }
 }
