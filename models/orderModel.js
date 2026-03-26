@@ -71,24 +71,33 @@ class OrderModel {
     return rows;
   }
 
-  static async updateStatus(id, status, paymentMethod = null) {
+  static async updateStatus(id, status, paymentMethod = null, cancelReason = null) {
     try {
       await db.query('BEGIN');
-      
-      let queryStr = 'UPDATE orders SET order_status = $1 WHERE id = $2 RETURNING *';
-      let params = [status, id];
+
+      // Build SET clause dynamically
+      const setClauses = ['order_status = $1'];
+      const params = [status, id];
+      let paramIdx = 3;
 
       if (paymentMethod) {
-        queryStr = 'UPDATE orders SET order_status = $1, payment_method = $3 WHERE id = $2 RETURNING *';
-        params = [status, id, paymentMethod];
+        setClauses.push(`payment_method = $${paramIdx}`);
+        params.push(paymentMethod);
+        paramIdx++;
+      }
+      if (cancelReason) {
+        setClauses.push(`cancel_reason = $${paramIdx}`);
+        params.push(cancelReason);
+        paramIdx++;
       }
 
+      const queryStr = `UPDATE orders SET ${setClauses.join(', ')} WHERE id = $2 RETURNING *`;
       const { rows } = await db.query(queryStr, params);
-      
+
       await db.query('INSERT INTO order_logs (order_id, status) VALUES ($1, $2)', [id, status]);
       if (status === 'paid' || status === 'cancelled') {
         const { rows: tableRows } = await db.query('SELECT table_id FROM orders WHERE id = $1', [id]);
-        if (tableRows.length > 0) {
+        if (tableRows.length > 0 && tableRows[0].table_id) {
           await db.query('UPDATE dining_tables SET table_status = \'empty\' WHERE id = $1', [tableRows[0].table_id]);
         }
       }
