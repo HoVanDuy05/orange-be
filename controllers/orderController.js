@@ -1,8 +1,19 @@
 const OrderModel = require('../models/orderModel');
+const PushController = require('./pushController');
 
 exports.createOrder = async (req, res) => {
   try {
     const data = await OrderModel.createOrder(req.body);
+    
+    // 🚀 GỬI PUSH CHO ADMIN KHI CÓ ĐƠN MỚI
+    // Lưu ý: data.table_id có thể undefined với khách mang đi
+    PushController.sendNotification(
+      'admin',
+      '🔔 CÓ ĐƠN HÀNG MỚI!',
+      `Đơn hàng #${data.id} đã được tạo thành công!`,
+      { url: `/orders/${data.id}` }
+    );
+
     res.status(201).json({ success: true, data });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
