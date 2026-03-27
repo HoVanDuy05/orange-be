@@ -15,7 +15,7 @@ async function clearOrders() {
     console.log('🗑️ Đang xóa toàn bộ dữ liệu đơn hàng (giữ lại Sản phẩm, Danh mục, Tài khoản)...');
     
     // TRUNCATE CASCADE sẽ tự động xóa các bảng phụ thuộc (order_items, payments, order_logs)
-    await pool.query('TRUNCATE TABLE orders CASCADE');
+    await pool.query('TRUNCATE TABLE orders RESTART IDENTITY CASCADE');
     console.log('✅ Đã xóa toàn bộ dữ liệu bảng: orders, order_items, payments, order_logs');
 
     // Chuyển tất cả các bàn về trạng thái trống

@@ -75,12 +75,12 @@ class OrderModel {
     return rows;
   }
 
-  static async createOrder({ table_id, items, note, customer_name, customer_phone }) {
+  static async createOrder({ table_id, items, note, customer_name, customer_phone, status, payment_method }) {
     try {
       await db.query('BEGIN');
       const { rows: orderRows } = await db.query(
-        'INSERT INTO orders (table_id, note, customer_name, customer_phone) VALUES ($1, $2, $3, $4) RETURNING *',
-        [table_id || null, note, customer_name, customer_phone]
+        'INSERT INTO orders (table_id, note, customer_name, customer_phone, order_status, payment_method) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+        [table_id || null, note, customer_name, customer_phone, status || 'pending', payment_method || null]
       );
       const orderId = orderRows[0].id;
       let totalAmount = 0;
@@ -109,8 +109,13 @@ class OrderModel {
       await db.query('UPDATE orders SET total_amount = $1 WHERE id = $2', [totalAmount, orderId]);
       
       if (table_id) {
+        // If order immediately paid or done, do we mark the table occupied? 
+        // Typically, if they pay upfront, they still occupy until 'done'.
         await db.query('UPDATE dining_tables SET table_status = \'occupied\' WHERE id = $1', [table_id]);
       }
+      
+      // Auto-insert order_log
+      await db.query('INSERT INTO order_logs (order_id, status) VALUES ($1, $2)', [orderId, status || 'pending']);
       
       await db.query('COMMIT');
       return { ...orderRows[0], total_amount: totalAmount };
