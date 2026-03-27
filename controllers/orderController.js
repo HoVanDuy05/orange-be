@@ -61,7 +61,6 @@ exports.getOrdersByTable = async (req, res) => {
   }
 };
 
-const PushController = require('./pushController');
 
 exports.updateOrderStatus = async (req, res) => {
   const { id } = req.params;
