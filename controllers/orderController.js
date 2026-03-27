@@ -84,6 +84,13 @@ exports.updateOrderStatus = async (req, res) => {
           `Đơn hàng #${id} đã bị hủy. ${cancel_reason ? `Lý do: ${cancel_reason}` : 'Vui lòng liên hệ quầy để biết thêm chi tiết.'}`,
           { url: `/order-detail/${id}` }
         );
+      } else if (status === 'confirmed') {
+        PushController.sendNotification(
+          data.customer_phone,
+          '✅ ĐÃ TIẾP NHẬN ĐƠN HÀNG',
+          `Đơn hàng #${id} đã được bếp xác nhận và đang nhanh chóng chuẩn bị!`,
+          { url: `/order-detail/${id}` }
+        );
       }
     }
 
