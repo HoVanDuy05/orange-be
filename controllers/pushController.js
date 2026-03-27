@@ -20,17 +20,7 @@ class PushController {
         return res.status(400).json({ success: false, message: 'Missing phone or subscription' });
       }
 
-      // Lưu vào DB (Upsert - Nếu số điện thoại này đã có thì cập nhật subscription mới)
-      // Một người dùng có thể dùng nhiều thiết bị? Tạm thời 1 điện thoại = 1 sub mới nhất
-      await pool.query(
-        `INSERT INTO push_subscriptionsBy (customer_phone, subscription) 
-         VALUES ($1, $2)
-         ON CONFLICT (id) DO UPDATE SET subscription = $2`,
-        [customer_phone, JSON.stringify(subscription)]
-      );
-
-      // Sửa lỗi: ON CONFLICT cần một unique constraint. 
-      // Tạm thời xóa cũ thêm mới cho đơn giản
+      // Xóa cũ thêm mới để đảm bảo mỗi SĐT chỉ có 1 subscription mới nhất
       await pool.query('DELETE FROM push_subscriptions WHERE customer_phone = $1', [customer_phone]);
       await pool.query(
         'INSERT INTO push_subscriptions (customer_phone, subscription) VALUES ($1, $2)',
