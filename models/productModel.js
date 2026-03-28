@@ -1,8 +1,36 @@
 const db = require('../config/db');
 
 class ProductModel {
-  static async getAll({ categoryId, search, activeOnly = true } = {}) {
-    let sql = `
+  static async getAll({ categoryId, search, activeOnly = true, page = 1, limit = 50 } = {}) {
+    const offset = (page - 1) * limit;
+    
+    let baseSql = `
+      FROM products p
+      LEFT JOIN categories c ON c.id = p.category_id
+      WHERE 1=1
+    `;
+    const params = [];
+    let idx = 1;
+
+    if (activeOnly) {
+      baseSql += ` AND p.is_active = true`;
+    }
+    if (categoryId) {
+      baseSql += ` AND p.category_id = $${idx++}`;
+      params.push(categoryId);
+    }
+    if (search) {
+      baseSql += ` AND p.product_name ILIKE $${idx++}`;
+      params.push(`%${search}%`);
+    }
+
+    // Count total for pagination
+    const countSql = `SELECT COUNT(*) as total ${baseSql}`;
+    const countRes = await db.query(countSql, params);
+    const total = parseInt(countRes.rows[0].total);
+
+    // Get data
+    let dataSql = `
       SELECT 
         p.*,
         c.category_name,
@@ -13,28 +41,23 @@ class ProductModel {
            WHERE oi.product_id = p.id AND o.order_status = 'completed'),
           0
         ) AS sales_count
-      FROM products p
-      LEFT JOIN categories c ON c.id = p.category_id
-      WHERE 1=1
+      ${baseSql}
+      ORDER BY p.created_at DESC, p.id DESC
+      LIMIT $${idx++} OFFSET $${idx++}
     `;
-    const params = [];
-    let idx = 1;
-
-    if (activeOnly) {
-      sql += ` AND p.is_active = true`;
-    }
-    if (categoryId) {
-      sql += ` AND p.category_id = $${idx++}`;
-      params.push(categoryId);
-    }
-    if (search) {
-      sql += ` AND p.product_name ILIKE $${idx++}`;
-      params.push(`%${search}%`);
-    }
-
-    sql += ' ORDER BY p.created_at DESC, p.id DESC';
-    const { rows } = await db.query(sql, params);
-    return rows;
+    
+    params.push(limit, offset);
+    const { rows } = await db.query(dataSql, params);
+    
+    return {
+      products: rows,
+      pagination: {
+        total,
+        page: Number(page),
+        limit: Number(limit),
+        totalPages: Math.ceil(total / limit)
+      }
+    };
   }
 
   static async findById(id) {

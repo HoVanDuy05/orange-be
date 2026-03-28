@@ -10,6 +10,7 @@ const authController       = require('../controllers/authController');
 const statisticsController = require('../controllers/statisticsController');
 const mediaController      = require('../controllers/mediaController');
 const bannerController     = require('../controllers/bannerController');
+const notificationController = require('../controllers/notificationController');
 const pushRoutes           = require('./pushRoutes');
 
 // Middlewares
@@ -102,6 +103,13 @@ router.delete('/media/:id', protect, requireRole('admin'), mediaController.delet
 // Statistics — admin only
 router.get('/stats/revenue', protect, requireRole('admin'), statisticsController.getRevenueStats);
 router.get('/stats/today',   protect,                       statisticsController.getTodayStats);
+
+// Notifications — staff & admin
+router.get   ('/notifications',            protect, notificationController.getNotifications);
+router.patch ('/notifications/:id/read',   protect, notificationController.markRead);
+router.post  ('/notifications/read-all',   protect, notificationController.markAllRead);
+router.delete('/notifications/:id',        protect, notificationController.deleteNotification);
+router.delete('/notifications',            protect, notificationController.clearAll);
 
 // ══════════════════════════════════════════════
 // 🏢 BRANCHES & EMPLOYEES & SYSTEM SETTINGS

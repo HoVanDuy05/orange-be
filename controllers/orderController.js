@@ -8,10 +8,17 @@ exports.createOrder = async (req, res) => {
     const data = await OrderModel.create(req.body);
 
     // Push notification to admin when new order arrives
+    const typeLabels = {
+      dine_in: 'Phục vụ tại bàn',
+      take_away: 'Khách mang đi',
+      delivery: 'Giao hàng'
+    };
+    const typeLabel = typeLabels[data.order_type] || 'Mới';
+    
     PushController.sendNotification(
       'admin',
-      '🔔 ĐƠN HÀNG MỚI!',
-      `Đơn #${data.id} (${data.order_type}) vừa được tạo`,
+      '🔔 THÔNG BÁO ĐƠN HÀNG',
+      `Hệ thống vừa nhận đơn ${typeLabel} #${data.id}. Vui lòng kiểm tra và xử lý!`,
       { url: `/orders/${data.id}` }
     ).catch((e) => logger.error('Push new order', e));
 
@@ -24,10 +31,10 @@ exports.createOrder = async (req, res) => {
 
 /** GET /api/orders?status=&type=&date= */
 exports.getAllOrders = async (req, res) => {
+  const { status, type, date, page, limit } = req.query;
   try {
-    const { status, type, date } = req.query;
-    const data = await OrderModel.getAll({ status, type, date });
-    res.status(200).json({ success: true, data });
+    const data = await OrderModel.getAll({ status, type, date, page, limit });
+    res.status(200).json({ success: true, ...data });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

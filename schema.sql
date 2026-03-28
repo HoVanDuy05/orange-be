@@ -150,6 +150,20 @@ create table settings (
 );
 
 -- =============================
+-- 🔔 NOTIFICATIONS (Lịch sử thông báo hệ thống)
+-- =============================
+
+create table notifications (
+  id serial primary key,
+  type varchar(20) default 'info', -- info, success, warning, error
+  title varchar(200) not null,
+  message text,
+  link varchar(255),
+  is_read boolean default false,
+  created_at timestamp default now()
+);
+
+-- =============================
 -- 🔔 PUSH NOTIFICATIONS
 -- =============================
 

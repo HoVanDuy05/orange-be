@@ -34,8 +34,14 @@ class OrderModel {
     `;
   }
 
-  static async getAll({ status, type, date } = {}) {
-    let sql = OrderModel.#baseSelect();
+  static async getAll({ status, type, date, page = 1, limit = 50 } = {}) {
+    const offset = (page - 1) * limit;
+    
+    let baseSql = `
+      FROM orders o
+      LEFT JOIN dining_tables dt ON dt.id = o.table_id
+      WHERE 1=1
+    `;
     const params = [];
     const where = [];
     let idx = 1;
@@ -53,11 +59,50 @@ class OrderModel {
       params.push(date);
     }
 
-    if (where.length > 0) sql += ` WHERE ${where.join(' AND ')}`;
-    sql += ' ORDER BY o.created_at DESC';
+    if (where.length > 0) baseSql += ` AND ${where.join(' AND ')}`;
 
-    const { rows } = await db.query(sql, params);
-    return rows;
+    // Count total
+    const countSql = `SELECT COUNT(*) as total ${baseSql}`;
+    const countRes = await db.query(countSql, params);
+    const total = parseInt(countRes.rows[0].total);
+
+    // Get data
+    let dataSql = `
+      SELECT 
+        o.*,
+        dt.table_name,
+        COALESCE(
+          (SELECT json_agg(json_build_object(
+            'id',           oi.id,
+            'product_id',   oi.product_id,
+            'product_name', p.product_name,
+            'image_url',    p.image_url,
+            'quantity',     oi.quantity,
+            'unit_price',   oi.unit_price,
+            'is_completed', oi.is_completed
+          ) ORDER BY oi.id)
+          FROM order_items oi
+          LEFT JOIN products p ON p.id = oi.product_id
+          WHERE oi.order_id = o.id),
+          '[]'::json
+        ) AS items
+      ${baseSql}
+      ORDER BY o.created_at DESC
+      LIMIT $${idx++} OFFSET $${idx++}
+    `;
+    
+    params.push(limit, offset);
+    const { rows } = await db.query(dataSql, params);
+    
+    return {
+      orders: rows,
+      pagination: {
+        total,
+        page: Number(page),
+        limit: Number(limit),
+        totalPages: Math.ceil(total / limit)
+      }
+    };
   }
 
   static async findById(id) {
