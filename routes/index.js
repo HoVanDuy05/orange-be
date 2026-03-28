@@ -2,73 +2,127 @@ const express = require('express');
 const router = express.Router();
 
 // Controllers
-const tableController = require('../controllers/tableController');
-const productController = require('../controllers/productController');
-const categoryController = require('../controllers/categoryController');
-const orderController = require('../controllers/orderController');
-const authController = require('../controllers/authController');
+const tableController      = require('../controllers/tableController');
+const productController    = require('../controllers/productController');
+const categoryController   = require('../controllers/categoryController');
+const orderController      = require('../controllers/orderController');
+const authController       = require('../controllers/authController');
 const statisticsController = require('../controllers/statisticsController');
-const stockController = require('../controllers/stockController');
-const mediaController = require('../controllers/mediaController');
-const bannerController = require('../controllers/bannerController');
-const pushRoutes = require('./pushRoutes');
+const mediaController      = require('../controllers/mediaController');
+const bannerController     = require('../controllers/bannerController');
+const pushRoutes           = require('./pushRoutes');
 
 // Middlewares
-const { protect } = require('../middlewares/commonMiddleware');
+const {
+  protect,
+  requireRole,
+  apiLimiter,
+  authLimiter,
+  orderLimiter,
+  validate,
+} = require('../middlewares/commonMiddleware');
+
+const {
+  registerRules,
+  loginRules,
+  createOrderRules,
+  updateStatusRules,
+  createProductRules,
+  tableRules,
+} = require('../middlewares/validationRules');
+
 const uploadCloud = require('../config/cloudinary');
 
-// --- Auth ---
-router.post('/auth/register', authController.register);
-router.post('/auth/login', authController.login);
+// ─── Apply general rate limit to all routes ────
+router.use(apiLimiter);
 
-// --- Media Library ---
-router.get('/media', protect, mediaController.getGallery);
-router.post('/upload', protect, uploadCloud.single('image'), mediaController.handleUpload);
-router.delete('/media/:id', protect, mediaController.deleteMedia);
+// ══════════════════════════════════════════════
+// 🔓 PUBLIC ROUTES
+// ══════════════════════════════════════════════
 
-// --- Public Access ---
-router.get('/tables', tableController.getAllTables);
-router.get('/categories', categoryController.getAllCategories);
-router.get('/products', productController.getAllProducts);
+// Auth
+router.post('/auth/register', authLimiter, registerRules, validate, authController.register);
+router.post('/auth/login',    authLimiter, loginRules,    validate, authController.login);
+router.get ('/auth/me',       protect,                             authController.getMe);
+
+// Menu (read-only, no auth required)
+router.get('/categories',   categoryController.getAllCategories);
+router.get('/products',     productController.getAllProducts);
 router.get('/products/:id', productController.getProductById);
-router.get('/banners', bannerController.getAllBanners);
+router.get('/banners',      bannerController.getAllBanners);
 
-router.post('/orders', orderController.createOrder);
-router.get('/orders', orderController.getAllOrders);
-router.get('/orders/:id', orderController.getOrderById);
-router.get('/orders/table-id/:tableId', orderController.getOrdersByTable);
-router.get('/orders/phone/:phone', orderController.getOrdersByPhone);
+// Tables (read-only public — customers need to see table availability)
+router.get('/tables',     tableController.getAllTables);
+router.get('/tables/:id', tableController.getTableById);
+
+// Orders — customer creates + tracks own order (rate-limited for anti-spam)
+router.post('/orders',              orderLimiter, createOrderRules, validate, orderController.createOrder);
+router.get ('/orders/:id',                                                     orderController.getOrderById);
+router.get ('/orders/table/:tableId',                                          orderController.getOrdersByTable);
+router.get ('/orders/phone/:phone',                                            orderController.getOrdersByPhone);
+
+// Push notifications — public subscribe
 router.use('/push', pushRoutes);
 
-// --- Admin Protected ---
-router.post('/tables', protect, tableController.createTable);
-router.put('/tables/:id', protect, tableController.updateTable);
-router.delete('/tables/:id', protect, tableController.deleteTable);
-router.patch('/tables/:id/status', protect, tableController.updateTableStatus);
+// ══════════════════════════════════════════════
+// 🔒 ADMIN / STAFF PROTECTED ROUTES
+// ══════════════════════════════════════════════
 
-router.post('/categories', protect, categoryController.createCategory);
-router.put('/categories/:id', protect, categoryController.updateCategory);
-router.delete('/categories/:id', protect, categoryController.deleteCategory);
+// Orders — admin reads all & updates
+router.get   ('/orders',                    protect,                    orderController.getAllOrders);
+router.patch ('/orders/:id/status',         protect, updateStatusRules, validate, orderController.updateOrderStatus);
+router.patch ('/orders/:id/items/:itemId',  protect,                    orderController.updateOrderItem);
+router.delete('/orders/:id',                protect, requireRole('admin'), orderController.deleteOrder);
 
-router.post('/products', protect, productController.createProduct);
-router.put('/products/:id', protect, productController.updateProduct);
-router.delete('/products/:id', protect, productController.deleteProduct);
+// Tables — only admin manages
+router.post  ('/tables',     protect, requireRole('admin'), tableRules, validate, tableController.createTable);
+router.put   ('/tables/:id', protect, requireRole('admin'), tableRules, validate, tableController.updateTable);
+router.delete('/tables/:id', protect, requireRole('admin'),             tableController.deleteTable);
 
-router.patch('/orders/:id/status', protect, orderController.updateOrderStatus);
-router.delete('/orders/:id', protect, orderController.deleteOrder);
+// Categories — admin only
+router.post  ('/categories',     protect, requireRole('admin'), categoryController.createCategory);
+router.put   ('/categories/:id', protect, requireRole('admin'), categoryController.updateCategory);
+router.delete('/categories/:id', protect, requireRole('admin'), categoryController.deleteCategory);
 
-router.post('/banners', protect, bannerController.createBanner);
-router.put('/banners/:id', protect, bannerController.updateBanner);
-router.delete('/banners/:id', protect, bannerController.deleteBanner);
+// Products — admin only
+router.post  ('/products',     protect, requireRole('admin'), createProductRules, validate, productController.createProduct);
+router.put   ('/products/:id', protect, requireRole('admin'), createProductRules, validate, productController.updateProduct);
+router.delete('/products/:id', protect, requireRole('admin'),                               productController.deleteProduct);
 
-// --- Stock ---
-router.get('/stock', protect, stockController.getAllStock);
-router.post('/stock', protect, stockController.addStock);
-router.put('/stock/:id', protect, stockController.updateStock);
-router.get('/stock/:id/history', protect, stockController.getHistory);
-router.delete('/stock/:id', protect, stockController.removeStock);
+// Banners — admin only
+router.post  ('/banners',     protect, requireRole('admin'), bannerController.createBanner);
+router.put   ('/banners/:id', protect, requireRole('admin'), bannerController.updateBanner);
+router.delete('/banners/:id', protect, requireRole('admin'), bannerController.deleteBanner);
 
-// --- Stats ---
-router.get('/stats/revenue', protect, statisticsController.getRevenueStats);
+// Media — staff & admin
+router.get   ('/media',     protect, mediaController.getGallery);
+router.post  ('/upload',    protect, uploadCloud.single('image'), mediaController.handleUpload);
+router.delete('/media/:id', protect, requireRole('admin'), mediaController.deleteMedia);
+
+// Statistics — admin only
+router.get('/stats/revenue', protect, requireRole('admin'), statisticsController.getRevenueStats);
+router.get('/stats/today',   protect,                       statisticsController.getTodayStats);
+
+// ══════════════════════════════════════════════
+// 🏢 BRANCHES & EMPLOYEES & SYSTEM SETTINGS
+// ══════════════════════════════════════════════
+const systemController   = require('../controllers/systemController');
+const employeeController = require('../controllers/employeeController');
+
+// Brands (Public read for templates)
+router.get('/system/brands', systemController.getBrands);
+router.put('/system/brands/:id', protect, requireRole('admin'), systemController.updateBrand);
+
+// Branches
+router.get   ('/branches',     systemController.getBranches);
+router.post  ('/branches',     protect, requireRole('admin'), systemController.createBranch);
+router.put   ('/branches/:id', protect, requireRole('admin'), systemController.updateBranch);
+router.delete('/branches/:id', protect, requireRole('admin'), systemController.deleteBranch);
+
+// Employees
+router.get   ('/employees',     protect, requireRole('admin'), employeeController.getEmployees);
+router.post  ('/employees',     protect, requireRole('admin'), employeeController.createEmployee);
+router.put   ('/employees/:id', protect, requireRole('admin'), employeeController.updateEmployee);
+router.delete('/employees/:id', protect, requireRole('admin'), employeeController.deleteEmployee);
 
 module.exports = router;

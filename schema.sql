@@ -1,34 +1,43 @@
 -- =============================
--- ENUM (trạng thái chuẩn)
+-- ENUM (Trạng thái dành cho Quán Nước / Cafe: Offline & Online)
 -- =============================
 
-create type table_status_enum as enum ('empty', 'occupied');
-
-create type order_status_enum as enum (
-  'pending', 'confirmed', 'preparing', 'done', 'paid', 'cancelled'
+create type order_type_enum as enum (
+  'dine_in',     -- Ăn uống tại bàn (Offline)
+  'take_away',   -- Khách mua mang đi (Offline / Đặt trước lấy tại quầy)
+  'delivery'     -- Giao hàng tận nơi (Online)
 );
 
-create type item_status_enum as enum (
-  'pending', 'confirmed', 'preparing', 'ready', 'served', 'cancelled'
+create type order_status_enum as enum (
+  'pending',       -- Chờ xác nhận
+  'confirmed',     -- Đã xác nhận / Đã thanh toán
+  'preparing',     -- Đang pha chế
+  'delivering',    -- Đang giao hàng (Dành riêng cho Đơn Online)
+  'served',        -- Đã mang ra bàn / Khách đã nhận thức uống
+  'completed',     -- Đã hoàn thành toàn bộ (Đóng bill)
+  'cancelled'      -- Đã hủy
 );
 
 create type payment_status_enum as enum (
-  'pending', 'success', 'failed'
+  'pending', 
+  'success', 
+  'failed',
+  'refunded'
 );
 
 -- =============================
--- 🪑 BÀN
+-- 🪑 BÀN (Dining Tables - Dành cho Offline Dine-In)
 -- =============================
 
 create table dining_tables (
   id serial primary key,
   table_name varchar(50) not null,
-  table_status table_status_enum default 'empty',
+  is_active boolean default true,
   created_at timestamp default now()
 );
 
 -- =============================
--- 📂 DANH MỤC
+-- 📂 DANH MỤC ĐỒ UỐNG / SẢN PHẨM
 -- =============================
 
 create table categories (
@@ -39,7 +48,7 @@ create table categories (
 );
 
 -- =============================
--- 🍔 SẢN PHẨM
+-- 🍹 ĐỒ UỐNG (PRODUCTS)
 -- =============================
 
 create table products (
@@ -54,38 +63,7 @@ create table products (
 );
 
 -- =============================
--- 🧾 ĐƠN HÀNG
--- =============================
-
-create table orders (
-  id serial primary key,
-  table_id int references dining_tables(id),
-  order_status order_status_enum default 'pending',
-  total_amount decimal(10,2) default 0,
-  note text,
-  created_at timestamp default now(),
-  updated_at timestamp default now()
-);
-
--- =============================
--- 📦 CHI TIẾT ĐƠN (QUAN TRỌNG NHẤT)
--- =============================
-
-create table order_items (
-  id serial primary key,
-  order_id int references orders(id) on delete cascade,
-  product_id int references products(id),
-  quantity int not null,
-  unit_price decimal(10,2) not null,
-  item_status item_status_enum default 'pending',
-
-  -- thời gian xử lý
-  started_at timestamp,
-  completed_at timestamp
-);
-
--- =============================
--- 👤 USERS
+-- 👤 USERS (Nhân viên, Quản trị, hoặc Khách online)
 -- =============================
 
 create table users (
@@ -93,21 +71,60 @@ create table users (
   full_name varchar(100),
   email varchar(150) unique,
   password_hash text,
-  role varchar(20) default 'staff',
+  role varchar(20) default 'staff', -- admin, staff, customer
   created_at timestamp default now()
 );
 
 -- =============================
--- 💳 PAYMENTS
+-- 🧾 ĐƠN HÀNG (Bao quát cả Online và Offline)
 -- =============================
 
-create table payments (
+create table orders (
   id serial primary key,
-  order_id int references orders(id),
-  payment_method varchar(50),
-  amount decimal(10,2),
+  
+  -- Phân loại Cấu trúc đơn (Online hay Offline)
+  order_type order_type_enum default 'dine_in',
+  
+  -- Thông tin Khách hàng
+  customer_name varchar(150),
+  customer_phone varchar(20),
+  customer_id int references users(id) on delete set null,
+  
+  -- Vị trí ngồi (Chỉ dùng cho dine_in)
+  table_id int references dining_tables(id) on delete set null,
+  
+  -- Địa chỉ giao hàng (Chỉ dùng cho delivery / Online)
+  shipping_address text,
+  
+  -- Trạng thái đơn & Thanh toán
+  order_status order_status_enum default 'pending',
+  total_amount decimal(10,2) default 0,
+  payment_method varchar(50), 
   payment_status payment_status_enum default 'pending',
-  paid_at timestamp
+  paid_at timestamp,
+  
+  -- Ghi chú & Lý do hủy
+  note text,
+  cancel_reason text,
+
+  created_at timestamp default now(),
+  updated_at timestamp default now()
+);
+
+-- =============================
+-- 📦 CHI TIẾT ĐƠN (Các món đồ uống của khách)
+-- =============================
+
+create table order_items (
+  id serial primary key,
+  order_id int references orders(id) on delete cascade,
+  product_id int references products(id),
+  
+  quantity int not null default 1,
+  unit_price decimal(10,2) not null,
+  
+  -- Trạng thái pha chế từng ly/món
+  is_completed boolean default false
 );
 
 -- =============================
@@ -133,6 +150,18 @@ create table settings (
 );
 
 -- =============================
+-- 🔔 PUSH NOTIFICATIONS
+-- =============================
+
+create table push_subscriptions (
+  id serial primary key,
+  endpoint text not null,
+  p256dh text not null,
+  auth text not null,
+  created_at timestamp default now()
+);
+
+-- =============================
 -- 📜 LOG TRẠNG THÁI ĐƠN
 -- =============================
 
@@ -140,19 +169,20 @@ create table order_logs (
   id serial primary key,
   order_id int references orders(id) on delete cascade,
   status order_status_enum,
+  note text,
   created_at timestamp default now()
 );
 
 -- =============================
--- INDEX (tối ưu performance 🔥)
+-- INDEX (Tối ưu performance 🔥)
 -- =============================
 
 create index idx_orders_table_id on orders(table_id);
+create index idx_orders_customer_phone on orders(customer_phone);
+create index idx_orders_type on orders(order_type);
 create index idx_orders_status on orders(order_status);
 
 create index idx_order_items_order_id on order_items(order_id);
-create index idx_order_items_status on order_items(item_status);
-
 create index idx_products_category on products(category_id);
 
 -- =============================

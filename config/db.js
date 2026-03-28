@@ -1,5 +1,6 @@
 const { Pool } = require('pg');
 const dns = require('dns');
+const logger = require('./logger');
 require('dotenv').config();
 
 dns.setDefaultResultOrder('ipv4first');
@@ -24,7 +25,7 @@ const pool = new Pool({
         // Fallback to dns.lookup with strict family check for localhost or if resolve4 fails
         dns.lookup(hostname, { family: 4 }, (lookupErr, address) => {
           if (lookupErr) {
-            console.error(`DNS resolve4/lookup failed for ${hostname}:`, lookupErr);
+            logger.error(`DNS resolve4/lookup failed for ${hostname}`, lookupErr);
             return callback(lookupErr);
           }
           callback(null, address, 4);
@@ -38,12 +39,12 @@ const pool = new Pool({
 });
 
 pool.on('connect', (client) => {
-  client.query('SET TIME ZONE \'Asia/Ho_Chi_Minh\'');
-  console.log('PostgreSQL Connected & Timezone set to VN (+7)');
+  client.query("SET TIME ZONE 'Asia/Ho_Chi_Minh'");
+  logger.info('PostgreSQL Connected & Timezone: Asia/Ho_Chi_Minh (+7)');
 });
 
 pool.on('error', (err) => {
-  console.error('Unexpected error on idle client', err);
+  logger.error('Unexpected error on idle DB client', err);
 });
 
 module.exports = {

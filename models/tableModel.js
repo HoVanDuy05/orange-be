@@ -1,42 +1,72 @@
 const db = require('../config/db');
 
 class TableModel {
+  /**
+   * Get all tables with dynamic occupancy calculated from active orders.
+   * A table is "occupied" if it has active (non-completed, non-cancelled) orders.
+   */
   static async getAll() {
-    const { rows } = await db.query('SELECT * FROM dining_tables ORDER BY id ASC');
+    const { rows } = await db.query(`
+      SELECT
+        dt.*,
+        COUNT(o.id) FILTER (
+          WHERE o.order_status NOT IN ('completed', 'cancelled')
+        ) AS active_order_count,
+        CASE
+          WHEN COUNT(o.id) FILTER (
+            WHERE o.order_status NOT IN ('completed', 'cancelled')
+          ) > 0 THEN true
+          ELSE false
+        END AS is_occupied
+      FROM dining_tables dt
+      LEFT JOIN orders o ON o.table_id = dt.id
+      WHERE dt.is_active = true
+      GROUP BY dt.id
+      ORDER BY dt.id ASC
+    `);
     return rows;
   }
 
   static async findById(id) {
-    const { rows } = await db.query('SELECT * FROM dining_tables WHERE id = $1', [id]);
+    const { rows } = await db.query(`
+      SELECT
+        dt.*,
+        COUNT(o.id) FILTER (
+          WHERE o.order_status NOT IN ('completed', 'cancelled')
+        ) AS active_order_count,
+        CASE
+          WHEN COUNT(o.id) FILTER (
+            WHERE o.order_status NOT IN ('completed', 'cancelled')
+          ) > 0 THEN true
+          ELSE false
+        END AS is_occupied
+      FROM dining_tables dt
+      LEFT JOIN orders o ON o.table_id = dt.id
+      WHERE dt.id = $1
+      GROUP BY dt.id
+    `, [id]);
     return rows[0];
   }
 
-  static async create(name) {
+  static async create(table_name) {
     const { rows } = await db.query(
       'INSERT INTO dining_tables (table_name) VALUES ($1) RETURNING *',
-      [name]
+      [table_name]
     );
     return rows[0];
   }
 
-  static async update(id, name) {
+  static async update(id, table_name) {
     const { rows } = await db.query(
       'UPDATE dining_tables SET table_name = $1 WHERE id = $2 RETURNING *',
-      [name, id]
+      [table_name, id]
     );
     return rows[0];
   }
 
-  static async updateStatus(id, status) {
-    const { rows } = await db.query(
-      'UPDATE dining_tables SET table_status = $1 WHERE id = $2 RETURNING *',
-      [status, id]
-    );
-    return rows[0];
-  }
-
+  /** Soft-delete: mark inactive instead of removing to preserve order history */
   static async delete(id) {
-    await db.query('DELETE FROM dining_tables WHERE id = $1', [id]);
+    await db.query('UPDATE dining_tables SET is_active = false WHERE id = $1', [id]);
     return true;
   }
 }

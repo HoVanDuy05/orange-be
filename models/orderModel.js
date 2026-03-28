@@ -1,188 +1,220 @@
 const db = require('../config/db');
 
+// Valid order statuses
+const VALID_ORDER_TYPES = ['dine_in', 'take_away', 'delivery'];
+const VALID_STATUSES = ['pending', 'confirmed', 'preparing', 'delivering', 'served', 'completed', 'cancelled'];
+
 class OrderModel {
-  static async getAll() {
-    const { rows } = await db.query(`
+  /**
+   * Build the base SELECT query with joins for orders.
+   * Re-used across getAll / findById / getByTable / getByPhone
+   */
+  static #baseSelect() {
+    return `
       SELECT 
         o.*,
         dt.table_name,
         COALESCE(
           (SELECT json_agg(json_build_object(
+            'id',           oi.id,
+            'product_id',   oi.product_id,
             'product_name', p.product_name,
-            'quantity', oi.quantity,
-            'unit_price', oi.unit_price,
-            'image_url', p.image_url
-          ))
+            'image_url',    p.image_url,
+            'quantity',     oi.quantity,
+            'unit_price',   oi.unit_price,
+            'is_completed', oi.is_completed
+          ) ORDER BY oi.id)
           FROM order_items oi
           LEFT JOIN products p ON p.id = oi.product_id
           WHERE oi.order_id = o.id),
           '[]'::json
-        ) as items
+        ) AS items
       FROM orders o
       LEFT JOIN dining_tables dt ON dt.id = o.table_id
-      ORDER BY o.created_at DESC
-    `);
+    `;
+  }
+
+  static async getAll({ status, type, date } = {}) {
+    let sql = OrderModel.#baseSelect();
+    const params = [];
+    const where = [];
+    let idx = 1;
+
+    if (status) {
+      where.push(`o.order_status = $${idx++}`);
+      params.push(status);
+    }
+    if (type) {
+      where.push(`o.order_type = $${idx++}`);
+      params.push(type);
+    }
+    if (date) {
+      where.push(`DATE(o.created_at) = $${idx++}`);
+      params.push(date);
+    }
+
+    if (where.length > 0) sql += ` WHERE ${where.join(' AND ')}`;
+    sql += ' ORDER BY o.created_at DESC';
+
+    const { rows } = await db.query(sql, params);
     return rows;
   }
 
   static async findById(id) {
-    const { rows } = await db.query(`
-      SELECT 
-        o.*,
-        dt.table_name,
-        COALESCE(
-          (SELECT json_agg(json_build_object(
-            'id', oi.id,
-            'product_id', oi.product_id,
-            'quantity', oi.quantity,
-            'unit_price', oi.unit_price,
-            'product_name', p.product_name,
-            'image_url', p.image_url
-          ))
-          FROM order_items oi
-          LEFT JOIN products p ON p.id = oi.product_id
-          WHERE oi.order_id = o.id),
-          '[]'::json
-        ) as items
-      FROM orders o
-      LEFT JOIN dining_tables dt ON dt.id = o.table_id
-      WHERE o.id = $1
-      GROUP BY o.id, dt.table_name
-    `, [id]);
-    
-    return rows[0];
+    const sql = OrderModel.#baseSelect() + ' WHERE o.id = $1 GROUP BY o.id, dt.table_name';
+    const { rows } = await db.query(sql, [id]);
+    return rows[0] || null;
   }
 
-  static async getOrdersByTable(tableId) {
-    const { rows } = await db.query(`
-      SELECT o.*, 
-             (SELECT json_agg(json_build_object(
-                'id', oi.id,
-                'product_id', oi.product_id,
-                'quantity', oi.quantity,
-                'unit_price', oi.unit_price,
-                'product_name', p.product_name,
-                'image_url', p.image_url
-             )) 
-              FROM order_items oi 
-              LEFT JOIN products p ON p.id = oi.product_id
-              WHERE oi.order_id = o.id) as items 
-      FROM orders o 
-      WHERE table_id = $1 
-      ORDER BY created_at DESC`,
-      [tableId]
-    );
+  static async getByTable(tableId) {
+    const sql = OrderModel.#baseSelect() +
+      ` WHERE o.table_id = $1 AND o.order_status NOT IN ('completed', 'cancelled')
+        ORDER BY o.created_at DESC`;
+    const { rows } = await db.query(sql, [tableId]);
     return rows;
   }
 
-  static async createOrder({ table_id, items, note, customer_name, customer_phone, status, payment_method }) {
+  static async getByPhone(phone) {
+    const sql = OrderModel.#baseSelect() +
+      ' WHERE o.customer_phone = $1 ORDER BY o.created_at DESC';
+    const { rows } = await db.query(sql, [phone]);
+    return rows;
+  }
+
+  /**
+   * Create a new order (online or offline).
+   * Validates order_type, computes total from DB prices (never trust client price).
+   */
+  static async create({
+    order_type = 'dine_in',
+    table_id,
+    customer_name,
+    customer_phone,
+    shipping_address,
+    note,
+    payment_method,
+    items = []
+  }) {
+    if (!VALID_ORDER_TYPES.includes(order_type)) {
+      throw new Error(`order_type không hợp lệ: ${order_type}`);
+    }
+    if (order_type === 'delivery' && !shipping_address) {
+      throw new Error('Đơn giao hàng cần có địa chỉ giao hàng (shipping_address)');
+    }
+    if (items.length === 0) {
+      throw new Error('Đơn hàng phải có ít nhất 1 sản phẩm');
+    }
+
     try {
       await db.query('BEGIN');
+
       const { rows: orderRows } = await db.query(
-        'INSERT INTO orders (table_id, note, customer_name, customer_phone, order_status, payment_method) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-        [table_id || null, note, customer_name, customer_phone, status || 'pending', payment_method || null]
+        `INSERT INTO orders
+          (order_type, table_id, customer_name, customer_phone, shipping_address, note, payment_method)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING *`,
+        [
+          order_type,
+          order_type === 'dine_in' ? (table_id || null) : null,
+          customer_name || null,
+          customer_phone || null,
+          shipping_address || null,
+          note || null,
+          payment_method || null
+        ]
       );
-      const orderId = orderRows[0].id;
+      const order = orderRows[0];
+      const orderId = order.id;
       let totalAmount = 0;
 
       for (const item of items) {
         const { product_id, quantity } = item;
-        
-        // 🛡️ BẢO MẬT: Lấy giá chính xác từ database, không tin tưởng giá từ client gửi lên
+        if (!product_id || !quantity || quantity < 1) continue;
+
+        // 🔒 Always fetch price from DB — never trust client-sent price
         const { rows: productRows } = await db.query(
-          'SELECT price, discount_price FROM products WHERE id = $1',
+          'SELECT price FROM products WHERE id = $1 AND is_active = true',
           [product_id]
         );
-        
         if (productRows.length === 0) continue;
-        
-        // Ưu tiên giá khuyến mãi nếu có
-        const currentPrice = Number(productRows[0].discount_price || productRows[0].price);
-        
+
+        const unitPrice = Number(productRows[0].price);
         await db.query(
           'INSERT INTO order_items (order_id, product_id, quantity, unit_price) VALUES ($1, $2, $3, $4)',
-          [orderId, product_id, quantity, currentPrice]
+          [orderId, product_id, quantity, unitPrice]
         );
-        totalAmount += quantity * currentPrice;
+        totalAmount += quantity * unitPrice;
       }
 
       await db.query('UPDATE orders SET total_amount = $1 WHERE id = $2', [totalAmount, orderId]);
-      
-      if (table_id) {
-        // If order immediately paid or done, do we mark the table occupied? 
-        // Typically, if they pay upfront, they still occupy until 'done'.
-        await db.query('UPDATE dining_tables SET table_status = \'occupied\' WHERE id = $1', [table_id]);
-      }
-      
-      // Auto-insert order_log
-      await db.query('INSERT INTO order_logs (order_id, status) VALUES ($1, $2)', [orderId, status || 'pending']);
-      
+      await db.query(
+        'INSERT INTO order_logs (order_id, status, note) VALUES ($1, $2, $3)',
+        [orderId, 'pending', 'Đơn hàng mới được tạo']
+      );
+
       await db.query('COMMIT');
-      return { ...orderRows[0], total_amount: totalAmount };
+      return { ...order, total_amount: totalAmount };
     } catch (error) {
       await db.query('ROLLBACK');
       throw error;
     }
   }
 
-  static async getOrdersByPhone(phone) {
-    const { rows } = await db.query(`
-      SELECT o.*, 
-             (SELECT json_agg(json_build_object(
-                'id', oi.id,
-                'product_id', oi.product_id,
-                'quantity', oi.quantity,
-                'unit_price', oi.unit_price,
-                'product_name', p.product_name,
-                'image_url', p.image_url
-             )) 
-              FROM order_items oi 
-              LEFT JOIN products p ON p.id = oi.product_id
-              WHERE oi.order_id = o.id) as items 
-      FROM orders o 
-      WHERE customer_phone = $1 
-      ORDER BY created_at DESC`,
-      [phone]
-    );
-    return rows;
-  }
-
+  /**
+   * Update order status. Enforces valid transitions and handles payment fields.
+   */
   static async updateStatus(id, status, paymentMethod = null, cancelReason = null) {
+    if (!VALID_STATUSES.includes(status)) {
+      throw new Error(`Trạng thái không hợp lệ: ${status}`);
+    }
+
     try {
       await db.query('BEGIN');
 
-      // Build SET clause dynamically
       const setClauses = ['order_status = $1'];
       const params = [status, id];
-      let paramIdx = 3;
+      let idx = 3;
 
+      // Auto-set paid_at on completed or when payment method is provided
+      if (status === 'completed') {
+        setClauses.push(`paid_at = COALESCE(paid_at, NOW())`);
+        setClauses.push(`payment_status = 'success'`);
+      }
       if (paymentMethod) {
-        setClauses.push(`payment_method = $${paramIdx}`);
+        setClauses.push(`payment_method = $${idx++}`);
         params.push(paymentMethod);
-        paramIdx++;
       }
       if (cancelReason) {
-        setClauses.push(`cancel_reason = $${paramIdx}`);
+        setClauses.push(`cancel_reason = $${idx++}`);
         params.push(cancelReason);
-        paramIdx++;
       }
 
-      const queryStr = `UPDATE orders SET ${setClauses.join(', ')} WHERE id = $2 RETURNING *`;
-      const { rows } = await db.query(queryStr, params);
+      const { rows } = await db.query(
+        `UPDATE orders SET ${setClauses.join(', ')} WHERE id = $2 RETURNING *`,
+        params
+      );
+      if (rows.length === 0) throw new Error('Không tìm thấy đơn hàng');
 
-      await db.query('INSERT INTO order_logs (order_id, status) VALUES ($1, $2)', [id, status]);
-      if (status === 'done' || status === 'cancelled') {
-        const { rows: tableRows } = await db.query('SELECT table_id FROM orders WHERE id = $1', [id]);
-        if (tableRows.length > 0 && tableRows[0].table_id) {
-          await db.query('UPDATE dining_tables SET table_status = \'empty\' WHERE id = $1', [tableRows[0].table_id]);
-        }
-      }
+      await db.query(
+        'INSERT INTO order_logs (order_id, status, note) VALUES ($1, $2, $3)',
+        [id, status, cancelReason || null]
+      );
+
       await db.query('COMMIT');
       return rows[0];
     } catch (error) {
       await db.query('ROLLBACK');
       throw error;
     }
+  }
+
+  /** Update individual item completion (pha chế xong 1 ly) */
+  static async updateItemStatus(orderId, itemId, is_completed) {
+    const { rows } = await db.query(
+      'UPDATE order_items SET is_completed = $1 WHERE id = $2 AND order_id = $3 RETURNING *',
+      [is_completed, itemId, orderId]
+    );
+    return rows[0] || null;
   }
 
   static async delete(id) {

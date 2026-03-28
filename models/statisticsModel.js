@@ -2,140 +2,135 @@ const db = require('../config/db');
 
 class StatisticsModel {
   /**
-   * Get overall stats including cost and profit
-   * Revenue is calculated from orders with order_status = 'done'
-   * type: 'daily', 'monthly', 'yearly', 'hourly'
+   * Financial stats: revenue, order count grouped by time.
+   * Revenue = only 'completed' orders (đã hoàn thành, đã đóng bill).
+   * type: 'hourly' | 'daily' | 'monthly' | 'yearly'
    */
-  static async getFinancialStats(type = 'daily') {
-    let revenueSql = '';
-    let costSql = '';
+  static async getFinancialStats(type = 'daily', date = null) {
+    // Date filter - default to today for hourly, all-time for others
+    let dateWhere = '';
+    const params = [];
+    let idx = 1;
 
-    // Revenue queries: use orders table with order_status = 'done'
-    // updated_at tracks when status was last changed (to 'done')
-    if (type === 'daily') {
-      revenueSql = `
-        SELECT DATE(updated_at) as time_label, SUM(total_amount) as revenue, COUNT(id) as success_orders
-        FROM orders
-        WHERE order_status = 'done'
-        GROUP BY 1
-        ORDER BY 1
-      `;
-      costSql = `
-        SELECT DATE(stock_date) as time_label, SUM(quantity * unit_price) as cost
-        FROM stock_in
-        GROUP BY 1
-        ORDER BY 1
-      `;
-    } else if (type === 'monthly') {
-      revenueSql = `
-        SELECT TO_CHAR(updated_at, 'YYYY-MM') as time_label, SUM(total_amount) as revenue, COUNT(id) as success_orders
-        FROM orders
-        WHERE order_status = 'done'
-        GROUP BY 1
-        ORDER BY 1
-      `;
-      costSql = `
-        SELECT TO_CHAR(stock_date, 'YYYY-MM') as time_label, SUM(quantity * unit_price) as cost
-        FROM stock_in
-        GROUP BY 1
-        ORDER BY 1
-      `;
-    } else if (type === 'yearly') {
-      revenueSql = `
-        SELECT TO_CHAR(updated_at, 'YYYY') as time_label, SUM(total_amount) as revenue, COUNT(id) as success_orders
-        FROM orders
-        WHERE order_status = 'done'
-        GROUP BY 1
-        ORDER BY 1
-      `;
-      costSql = `
-        SELECT TO_CHAR(stock_date, 'YYYY') as time_label, SUM(quantity * unit_price) as cost
-        FROM stock_in
-        GROUP BY 1
-        ORDER BY 1
-      `;
-    } else if (type === 'hourly') {
-      revenueSql = `
-        SELECT TO_CHAR(updated_at, 'HH24:00') as time_label, SUM(total_amount) as revenue, COUNT(id) as success_orders
-        FROM orders
-        WHERE order_status = 'done' AND DATE(updated_at) = CURRENT_DATE
-        GROUP BY 1
-        ORDER BY 1
-      `;
-      costSql = `
-        SELECT TO_CHAR(stock_date, 'HH24:00') as time_label, SUM(quantity * unit_price) as cost
-        FROM stock_in
-        WHERE DATE(stock_date) = CURRENT_DATE
-        GROUP BY 1
-        ORDER BY 1
-      `;
+    if (type === 'hourly') {
+      dateWhere = `AND DATE(paid_at) = $${idx++}`;
+      params.push(date || 'CURRENT_DATE');
+    } else if (date) {
+      dateWhere = `AND DATE(paid_at) = $${idx++}`;
+      params.push(date);
     }
 
-    const { rows: revenueData } = await db.query(revenueSql);
-    const { rows: costData } = await db.query(costSql);
+    const groupFormats = {
+      hourly:  `TO_CHAR(paid_at, 'HH24:00')`,
+      daily:   `DATE(paid_at)`,
+      monthly: `TO_CHAR(paid_at, 'YYYY-MM')`,
+      yearly:  `TO_CHAR(paid_at, 'YYYY')`,
+    };
+    const groupExpr = groupFormats[type] || groupFormats.daily;
 
-    // Merge data by time_label
-    const merged = {};
-    revenueData.forEach(r => {
-      const label = r.time_label instanceof Date ? r.time_label.toISOString().slice(0, 10) : String(r.time_label);
-      merged[label] = { 
-        time_label: label, 
-        revenue: Number(r.revenue), 
-        success_orders: Number(r.success_orders || 0),
-        cost: 0, 
-        profit: Number(r.revenue) 
-      };
-    });
-    costData.forEach(c => {
-      const label = c.time_label instanceof Date ? c.time_label.toISOString().slice(0, 10) : String(c.time_label);
-      if (merged[label]) {
-        merged[label].cost = Number(c.cost);
-        merged[label].profit = merged[label].revenue - Number(c.cost);
-      } else {
-        merged[label] = { 
-          time_label: label, 
-          revenue: 0, 
-          success_orders: 0,
-          cost: Number(c.cost), 
-          profit: -Number(c.cost) 
-        };
-      }
-    });
+    const revenueSql = `
+      SELECT
+        ${groupExpr}::text AS time_label,
+        SUM(total_amount)  AS revenue,
+        COUNT(id)          AS order_count,
+        SUM(CASE WHEN payment_method = 'cash'     THEN total_amount ELSE 0 END) AS cash_revenue,
+        SUM(CASE WHEN payment_method = 'transfer' THEN total_amount ELSE 0 END) AS transfer_revenue,
+        SUM(CASE WHEN order_type = 'dine_in'   THEN total_amount ELSE 0 END) AS dine_in_revenue,
+        SUM(CASE WHEN order_type = 'take_away' THEN total_amount ELSE 0 END) AS take_away_revenue,
+        SUM(CASE WHEN order_type = 'delivery'  THEN total_amount ELSE 0 END) AS delivery_revenue
+      FROM orders
+      WHERE order_status = 'completed' AND paid_at IS NOT NULL ${dateWhere}
+      GROUP BY 1
+      ORDER BY 1
+    `;
 
-    return Object.values(merged).sort((a, b) => a.time_label > b.time_label ? 1 : -1);
+    const { rows } = await db.query(revenueSql, params);
+
+    return rows.map(r => ({
+      time_label:        String(r.time_label),
+      revenue:           Number(r.revenue || 0),
+      order_count:       Number(r.order_count || 0),
+      cash_revenue:      Number(r.cash_revenue || 0),
+      transfer_revenue:  Number(r.transfer_revenue || 0),
+      dine_in_revenue:   Number(r.dine_in_revenue || 0),
+      take_away_revenue: Number(r.take_away_revenue || 0),
+      delivery_revenue:  Number(r.delivery_revenue || 0),
+    }));
   }
 
+  /** Today's summary */
+  static async getTodaySummary() {
+    const { rows } = await db.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE order_status = 'completed')                    AS completed_orders,
+        COUNT(*) FILTER (WHERE order_status = 'cancelled')                    AS cancelled_orders,
+        COUNT(*) FILTER (WHERE order_status NOT IN ('completed', 'cancelled')) AS active_orders,
+        COALESCE(SUM(total_amount) FILTER (WHERE order_status = 'completed'), 0) AS today_revenue,
+        COALESCE(SUM(total_amount) FILTER (WHERE order_status = 'completed' AND payment_method = 'cash'), 0)     AS cash_revenue,
+        COALESCE(SUM(total_amount) FILTER (WHERE order_status = 'completed' AND payment_method = 'transfer'), 0) AS transfer_revenue
+      FROM orders
+      WHERE DATE(created_at) = CURRENT_DATE
+    `);
+    const r = rows[0];
+    return {
+      completed_orders: Number(r.completed_orders),
+      cancelled_orders: Number(r.cancelled_orders),
+      active_orders:    Number(r.active_orders),
+      today_revenue:    Number(r.today_revenue),
+      cash_revenue:     Number(r.cash_revenue),
+      transfer_revenue: Number(r.transfer_revenue),
+    };
+  }
+
+  /** Revenue breakdown by product category */
   static async getRevenueByCategory() {
-    const sql = `
-      SELECT 
-        c.category_name, 
-        SUM(oi.quantity * oi.unit_price) as revenue
+    const { rows } = await db.query(`
+      SELECT
+        c.category_name,
+        SUM(oi.quantity * oi.unit_price) AS revenue,
+        SUM(oi.quantity)                 AS items_sold
       FROM order_items oi
-      JOIN products p ON oi.product_id = p.id
-      JOIN categories c ON p.category_id = c.id
-      JOIN orders o ON oi.order_id = o.id
-      WHERE o.order_status = 'done'
+      JOIN products   p ON p.id = oi.product_id
+      JOIN categories c ON c.id = p.category_id
+      JOIN orders     o ON o.id = oi.order_id
+      WHERE o.order_status = 'completed'
       GROUP BY c.category_name
-      ORDER BY revenue DESC;
-    `;
-    const { rows } = await db.query(sql);
+      ORDER BY revenue DESC
+    `);
     return rows;
   }
 
-  static async getMostSoldProducts() {
-    const sql = `
-      SELECT 
-        p.product_name, 
-        SUM(oi.quantity) as total_sold
+  /** Top 10 best-selling products */
+  static async getTopProducts(limit = 10) {
+    const { rows } = await db.query(`
+      SELECT
+        p.id,
+        p.product_name,
+        p.image_url,
+        SUM(oi.quantity)                 AS total_sold,
+        SUM(oi.quantity * oi.unit_price) AS total_revenue
       FROM order_items oi
-      JOIN products p ON oi.product_id = p.id
-      JOIN orders o ON oi.order_id = o.id
-      WHERE o.order_status = 'done'
-      GROUP BY p.product_name
+      JOIN products p ON p.id = oi.product_id
+      JOIN orders   o ON o.id = oi.order_id
+      WHERE o.order_status = 'completed'
+      GROUP BY p.id, p.product_name, p.image_url
       ORDER BY total_sold DESC
-      LIMIT 10;
-    `;
-    const { rows } = await db.query(sql);
+      LIMIT $1
+    `, [limit]);
+    return rows;
+  }
+
+  /** Orders by hour-of-day (traffic heatmap) */
+  static async getHourlyTraffic() {
+    const { rows } = await db.query(`
+      SELECT
+        EXTRACT(HOUR FROM created_at)::int AS hour,
+        COUNT(*) AS order_count
+      FROM orders
+      WHERE DATE(created_at) >= CURRENT_DATE - INTERVAL '7 days'
+      GROUP BY 1
+      ORDER BY 1
+    `);
     return rows;
   }
 }
