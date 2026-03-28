@@ -1,9 +1,9 @@
 const db = require('../config/db');
 
 class ProductModel {
-  static async getAll({ categoryId, search, activeOnly = true, page = 1, limit = 50 } = {}) {
+  static async getAll({ categoryId, search, activeOnly = true, page = 1, limit = 50, ids } = {}) {
     const offset = (page - 1) * limit;
-    
+
     let baseSql = `
       FROM products p
       LEFT JOIN categories c ON c.id = p.category_id
@@ -22,6 +22,11 @@ class ProductModel {
     if (search) {
       baseSql += ` AND p.product_name ILIKE $${idx++}`;
       params.push(`%${search}%`);
+    }
+    if (ids) {
+      const idArray = ids.split(',').map(id => id.trim());
+      baseSql += ` AND p.id = ANY($${idx++})`;
+      params.push(idArray);
     }
 
     // Count total for pagination
@@ -44,12 +49,15 @@ class ProductModel {
         ) AS sales_count
       ${baseSql}
       ORDER BY p.created_at DESC, p.id DESC
-      LIMIT $${idx++} OFFSET $${idx++}
+      ${ids ? '' : `LIMIT $${idx++} OFFSET $${idx++}`}
     `;
-    
-    params.push(limit, offset);
+
+    if (!ids) {
+      params.push(limit, offset);
+    }
+
     const { rows } = await db.query(dataSql, params);
-    
+
     return {
       products: rows,
       pagination: {

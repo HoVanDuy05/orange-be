@@ -4,7 +4,7 @@ const logger = require('../config/logger');
 exports.getBrands = async (req, res, next) => {
   try {
     const { rows } = await db.query('SELECT * FROM brand_themes ORDER BY id ASC');
-    res.json(rows);
+    res.json({ success: true, data: rows });
   } catch (err) { 
     logger.error('Get Brands Error', err);
     next(err); 

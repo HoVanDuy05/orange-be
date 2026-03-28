@@ -3,7 +3,7 @@ const db = require('../config/db');
 class CategoryModel {
   static async getAll() {
     const { rows } = await db.query(`
-      SELECT *, 'ORANGE-DM-' || lpad(id::text, 2, '0') AS category_code FROM categories ORDER BY id DESC
+      SELECT *, 'ORANGE-DM-' || lpad(id::text, 2, '0') AS category_code FROM categories ORDER BY id ASC
     `);
     return rows;
   }
@@ -20,18 +20,18 @@ class CategoryModel {
     return rows[0];
   }
 
-  static async create({ category_name, description }) {
+  static async create({ category_name, description, image_url }) {
     const { rows } = await db.query(
-      'INSERT INTO categories (category_name, description) VALUES ($1, $2) RETURNING *',
-      [category_name, description]
+      'INSERT INTO categories (category_name, description, image_url) VALUES ($1, $2, $3) RETURNING *',
+      [category_name, description || null, image_url || null]
     );
     return rows[0];
   }
 
-  static async update(id, { category_name, description, is_active }) {
+  static async update(id, { category_name, description, is_active, image_url }) {
     const { rows } = await db.query(
-      'UPDATE categories SET category_name = $1, description = $2, is_active = $3 WHERE id = $4 RETURNING *',
-      [category_name, description, is_active, id]
+      'UPDATE categories SET category_name = $1, description = $2, is_active = $3, image_url = $4 WHERE id = $5 RETURNING *',
+      [category_name, description, is_active ?? true, image_url || null, id]
     );
     return rows[0];
   }

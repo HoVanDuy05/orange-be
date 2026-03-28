@@ -14,10 +14,12 @@ const pool = new Pool({
   ssl: {
     rejectUnauthorized: false
   },
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 5000,
+  max: 10,
+  idleTimeoutMillis: 10000,
+  connectionTimeoutMillis: 10000,
   keepAlive: true,
+  keepAliveInitialDelayMillis: 1000,
+  application_name: 'orange_backend',
   lookup: (hostname, options, callback) => {
     // Force direct IPv4 resolution to skip IPv6 entirely
     dns.resolve4(hostname, (err, addresses) => {
@@ -43,10 +45,48 @@ pool.on('connect', (client) => {
   logger.info('PostgreSQL Connected & Timezone: Asia/Ho_Chi_Minh (+7)');
 });
 
-pool.on('error', (err) => {
+pool.on('error', (err, client) => {
   logger.error('Unexpected error on idle DB client', err);
+  if (client) {
+    logger.error('Client connection details', {
+      host: client.host,
+      port: client.port,
+      database: client.database,
+      user: client.user
+    });
+  }
+});
+
+pool.on('acquire', (client) => {
+  logger.debug('Client acquired from pool');
+});
+
+pool.on('remove', (client) => {
+  logger.debug('Client removed from pool');
 });
 
 module.exports = {
-  query: (text, params) => pool.query(text, params),
+  query: async (text, params) => {
+    const start = Date.now();
+    try {
+      const result = await pool.query(text, params);
+      const duration = Date.now() - start;
+      if (duration > 1000) {
+        logger.warn(`Slow query detected: ${duration}ms`, {
+          query: text.substring(0, 100),
+          paramCount: params?.length || 0
+        });
+      }
+      return result;
+    } catch (error) {
+      const duration = Date.now() - start;
+      logger.error(`Query failed after ${duration}ms`, {
+        query: text.substring(0, 100),
+        error: error.message,
+        code: error.code
+      });
+      throw error;
+    }
+  },
+  pool: pool
 };

@@ -16,7 +16,18 @@ exports.logger = (req, res, next) => {
 // ❌ Global Error Handler
 // ─────────────────────────────────────────────
 exports.errorHandler = (err, req, res, next) => {
-  logger.error('Unhandled', err);
+  // Don't log connection termination errors repeatedly
+  if (err.message && err.message.includes('Connection terminated')) {
+    logger.error('Database connection error', {
+      error: err.message,
+      code: err.code,
+      route: `${req.method} ${req.url}`,
+      ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress
+    });
+  } else {
+    logger.error('Unhandled', err);
+  }
+
   const status = err.status || 500;
   res.status(status).json({
     success: false,

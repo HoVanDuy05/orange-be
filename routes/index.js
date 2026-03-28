@@ -118,6 +118,7 @@ const systemController   = require('../controllers/systemController');
 const employeeController = require('../controllers/employeeController');
 
 // Brands (Public read for templates)
+router.get('/system/themes', systemController.getBrands);
 router.get('/system/brands', systemController.getBrands);
 router.put('/system/brands/:id', protect, requireRole('admin'), systemController.updateBrand);
 
