@@ -65,6 +65,62 @@ exports.login = async (req, res) => {
   }
 };
 
+/** POST /api/auth/client/register — For customers using phone */
+exports.clientRegister = async (req, res) => {
+  const { full_name, phone, password } = req.body;
+  try {
+    const existing = await UserModel.findByPhone(phone);
+    if (existing) {
+      return res.status(409).json({ success: false, message: 'Số điện thoại đã được sử dụng' });
+    }
+
+    const password_hash = await bcrypt.hash(password, 12);
+    const user = await UserModel.create({
+      full_name: full_name.trim(),
+      phone: phone.trim(),
+      password_hash,
+      role: 'user'
+    });
+
+    res.status(201).json({ success: true, data: user });
+  } catch (error) {
+    logger.error('[Auth] Client Register', error);
+    res.status(500).json({ success: false, message: 'Đăng ký thất bại, vui lòng thử lại' });
+  }
+};
+
+/** POST /api/auth/client/login — For customers using phone */
+exports.clientLogin = async (req, res) => {
+  const { phone, password } = req.body;
+  try {
+    const user = await UserModel.findByPhone(phone.trim());
+    if (!user) {
+      await bcrypt.compare(password, '$2a$12$dummyhashtopreventtimingattack00000');
+      return res.status(401).json({ success: false, message: 'Số điện thoại hoặc mật khẩu không đúng' });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password_hash);
+    if (!isMatch) {
+      return res.status(401).json({ success: false, message: 'Số điện thoại hoặc mật khẩu không đúng' });
+    }
+
+    const token = jwt.sign(
+      { id: user.id, role: user.role, full_name: user.full_name },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN || '30d' }
+    );
+
+    res.status(200).json({
+      success: true,
+      token,
+      user: { id: user.id, full_name: user.full_name, phone: user.phone, role: user.role }
+    });
+  } catch (error) {
+    logger.error('[Auth] Client Login', error);
+    res.status(500).json({ success: false, message: 'Đăng nhập thất bại, vui lòng thử lại' });
+  }
+};
+
 /** GET /api/auth/me — get current user from token */
 exports.getMe = async (req, res) => {
   try {

@@ -1,7 +1,7 @@
 const { body } = require('express-validator');
 
 // ─────────────────────────────────────────────
-// Auth Validators
+// Auth Validators (Staff/Admin - Email)
 // ─────────────────────────────────────────────
 exports.registerRules = [
   body('full_name')
@@ -25,6 +25,27 @@ exports.registerRules = [
 
 exports.loginRules = [
   body('email').trim().notEmpty().isEmail().withMessage('Email không hợp lệ').normalizeEmail(),
+  body('password').notEmpty().withMessage('Mật khẩu là bắt buộc'),
+];
+
+// ─────────────────────────────────────────────
+// Client Auth Validators (Phone)
+// ─────────────────────────────────────────────
+exports.clientRegisterRules = [
+  body('full_name')
+    .trim().notEmpty().withMessage('Tên của bạn là bắt buộc'),
+
+  body('phone')
+    .trim().notEmpty().withMessage('Số điện thoại là bắt buộc')
+    .matches(/^(0|\+84)[0-9]{8,10}$/).withMessage('Số điện thoại không hợp lệ'),
+
+  body('password')
+    .notEmpty().withMessage('Mật khẩu là bắt buộc')
+    .isLength({ min: 6 }).withMessage('Mật khẩu tối thiểu 6 ký tự'),
+];
+
+exports.clientLoginRules = [
+  body('phone').trim().notEmpty().withMessage('Số điện thoại là bắt buộc'),
   body('password').notEmpty().withMessage('Mật khẩu là bắt buộc'),
 ];
 
