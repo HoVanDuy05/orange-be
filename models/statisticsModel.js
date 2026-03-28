@@ -3,18 +3,18 @@ const db = require('../config/db');
 class StatisticsModel {
   /**
    * Get overall stats including cost and profit
-   * Revenue is calculated from orders with order_status = 'paid'
+   * Revenue is calculated from orders with order_status = 'done'
    * type: 'daily', 'monthly', 'yearly', 'hourly'
    */
   static async getFinancialStats(type = 'daily') {
     let revenueSql = '';
     let costSql = '';
 
-    // Revenue queries: use orders table with order_status = 'paid'
-    // updated_at tracks when status was last changed (to 'paid')
+    // Revenue queries: use orders table with order_status = 'done'
+    // updated_at tracks when status was last changed (to 'done')
     if (type === 'daily') {
       revenueSql = `
-        SELECT DATE(updated_at) as time_label, SUM(total_amount) as revenue
+        SELECT DATE(updated_at) as time_label, SUM(total_amount) as revenue, COUNT(id) as success_orders
         FROM orders
         WHERE order_status = 'done'
         GROUP BY 1
@@ -28,7 +28,7 @@ class StatisticsModel {
       `;
     } else if (type === 'monthly') {
       revenueSql = `
-        SELECT TO_CHAR(updated_at, 'YYYY-MM') as time_label, SUM(total_amount) as revenue
+        SELECT TO_CHAR(updated_at, 'YYYY-MM') as time_label, SUM(total_amount) as revenue, COUNT(id) as success_orders
         FROM orders
         WHERE order_status = 'done'
         GROUP BY 1
@@ -42,7 +42,7 @@ class StatisticsModel {
       `;
     } else if (type === 'yearly') {
       revenueSql = `
-        SELECT TO_CHAR(updated_at, 'YYYY') as time_label, SUM(total_amount) as revenue
+        SELECT TO_CHAR(updated_at, 'YYYY') as time_label, SUM(total_amount) as revenue, COUNT(id) as success_orders
         FROM orders
         WHERE order_status = 'done'
         GROUP BY 1
@@ -56,7 +56,7 @@ class StatisticsModel {
       `;
     } else if (type === 'hourly') {
       revenueSql = `
-        SELECT TO_CHAR(updated_at, 'HH24:00') as time_label, SUM(total_amount) as revenue
+        SELECT TO_CHAR(updated_at, 'HH24:00') as time_label, SUM(total_amount) as revenue, COUNT(id) as success_orders
         FROM orders
         WHERE order_status = 'done' AND DATE(updated_at) = CURRENT_DATE
         GROUP BY 1
@@ -78,7 +78,13 @@ class StatisticsModel {
     const merged = {};
     revenueData.forEach(r => {
       const label = r.time_label instanceof Date ? r.time_label.toISOString().slice(0, 10) : String(r.time_label);
-      merged[label] = { time_label: label, revenue: Number(r.revenue), cost: 0, profit: Number(r.revenue) };
+      merged[label] = { 
+        time_label: label, 
+        revenue: Number(r.revenue), 
+        success_orders: Number(r.success_orders || 0),
+        cost: 0, 
+        profit: Number(r.revenue) 
+      };
     });
     costData.forEach(c => {
       const label = c.time_label instanceof Date ? c.time_label.toISOString().slice(0, 10) : String(c.time_label);
@@ -86,7 +92,13 @@ class StatisticsModel {
         merged[label].cost = Number(c.cost);
         merged[label].profit = merged[label].revenue - Number(c.cost);
       } else {
-        merged[label] = { time_label: label, revenue: 0, cost: Number(c.cost), profit: -Number(c.cost) };
+        merged[label] = { 
+          time_label: label, 
+          revenue: 0, 
+          success_orders: 0,
+          cost: Number(c.cost), 
+          profit: -Number(c.cost) 
+        };
       }
     });
 
