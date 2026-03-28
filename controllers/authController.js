@@ -68,14 +68,19 @@ exports.login = async (req, res) => {
 /** POST /api/auth/client/register — For customers using phone */
 exports.clientRegister = async (req, res) => {
   const { full_name, phone, password } = req.body;
+  console.log('[DEBUG] clientRegister called with:', { full_name, phone });
   try {
     // Check duplicate phone
+    console.log('[DEBUG] Checking phone:', phone);
     const existingPhone = await UserModel.findByPhone(phone);
+    console.log('[DEBUG] existingPhone:', existingPhone);
     if (existingPhone) {
       return res.status(409).json({ success: false, message: 'Số điện thoại đã được sử dụng' });
     }
 
+    console.log('[DEBUG] Hashing password...');
     const password_hash = await bcrypt.hash(password, 12);
+    console.log('[DEBUG] Creating user...');
     const user = await UserModel.create({
       full_name: full_name.trim(),
       email: null, // Client đăng ký bằng phone nên email là null
@@ -83,9 +88,11 @@ exports.clientRegister = async (req, res) => {
       password_hash,
       role: 'user'
     });
+    console.log('[DEBUG] User created:', user);
 
     res.status(201).json({ success: true, data: user });
   } catch (error) {
+    console.error('[DEBUG] clientRegister error:', error);
     logger.error('[Auth] Client Register', error);
     res.status(500).json({ success: false, message: 'Đăng ký thất bại, vui lòng thử lại' });
   }
