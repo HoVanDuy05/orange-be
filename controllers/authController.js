@@ -69,14 +69,16 @@ exports.login = async (req, res) => {
 exports.clientRegister = async (req, res) => {
   const { full_name, phone, password } = req.body;
   try {
-    const existing = await UserModel.findByPhone(phone);
-    if (existing) {
+    // Check duplicate phone
+    const existingPhone = await UserModel.findByPhone(phone);
+    if (existingPhone) {
       return res.status(409).json({ success: false, message: 'Số điện thoại đã được sử dụng' });
     }
 
     const password_hash = await bcrypt.hash(password, 12);
     const user = await UserModel.create({
       full_name: full_name.trim(),
+      email: null, // Client đăng ký bằng phone nên email là null
       phone: phone.trim(),
       password_hash,
       role: 'user'
