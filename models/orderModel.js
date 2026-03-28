@@ -13,6 +13,7 @@ class OrderModel {
     return `
       SELECT 
         o.*,
+        'ORANGE-' || to_char(o.created_at, 'YYYYMMDD') || '-' || lpad(o.id::text, 4, '0') AS order_code,
         dt.table_name,
         COALESCE(
           (SELECT json_agg(json_build_object(
@@ -70,6 +71,7 @@ class OrderModel {
     let dataSql = `
       SELECT 
         o.*,
+        'ORANGE-' || to_char(o.created_at, 'YYYYMMDD') || '-' || lpad(o.id::text, 4, '0') AS order_code,
         dt.table_name,
         COALESCE(
           (SELECT json_agg(json_build_object(

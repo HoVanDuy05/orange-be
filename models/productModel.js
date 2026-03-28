@@ -33,6 +33,7 @@ class ProductModel {
     let dataSql = `
       SELECT 
         p.*,
+        'ORANGE-SP-' || lpad(p.id::text, 4, '0') AS product_code,
         c.category_name,
         COALESCE(
           (SELECT SUM(oi.quantity)
@@ -62,7 +63,7 @@ class ProductModel {
 
   static async findById(id) {
     const { rows } = await db.query(`
-      SELECT p.*, c.category_name
+      SELECT p.*, 'ORANGE-SP-' || lpad(p.id::text, 4, '0') AS product_code, c.category_name
       FROM products p
       LEFT JOIN categories c ON c.id = p.category_id
       WHERE p.id = $1
