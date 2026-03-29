@@ -23,6 +23,14 @@ class UserModel {
     );
     return rows[0];
   }
+
+  static async updateById(id, { full_name, phone, address }) {
+    const { rows } = await db.query(
+      'UPDATE users SET full_name = $1, phone = $2, address = $3 WHERE id = $4 RETURNING id, full_name, email, phone, address, role',
+      [full_name, phone || null, address || null, id]
+    );
+    return rows[0];
+  }
 }
 
 module.exports = UserModel;

@@ -48,6 +48,8 @@ router.post('/auth/register', authLimiter, registerRules, validate, authControll
 router.post('/auth/login', authLimiter, loginRules, validate, authController.login);
 router.post('/auth/client/register', authLimiter, clientRegisterRules, validate, authController.clientRegister);
 router.post('/auth/client/login', authLimiter, clientLoginRules, validate, authController.clientLogin);
+router.get('/auth/client/profile', authController.getClientProfile);
+router.put('/auth/client/profile', authController.updateClientProfile);
 router.get('/auth/me', protect, authController.getMe);
 
 // Menu (read-only, no auth required)

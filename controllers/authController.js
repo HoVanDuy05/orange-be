@@ -140,3 +140,64 @@ exports.getMe = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+/** GET /api/auth/client/profile — get client profile by phone */
+exports.getClientProfile = async (req, res) => {
+  try {
+    // Get phone from query or from token if authenticated
+    const { phone } = req.query;
+
+    if (!phone) {
+      return res.status(400).json({ success: false, message: 'Vui lòng cung cấp số điện thoại' });
+    }
+
+    const user = await UserModel.findByPhone(phone.trim());
+    if (!user) return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng' });
+
+    res.status(200).json({
+      success: true,
+      user: {
+        id: user.id,
+        full_name: user.full_name,
+        phone: user.phone,
+        address: user.address,
+        role: user.role
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/** PUT /api/auth/client/profile — update client profile */
+exports.updateClientProfile = async (req, res) => {
+  try {
+    const { phone, full_name, address } = req.body;
+
+    if (!phone) {
+      return res.status(400).json({ success: false, message: 'Vui lòng cung cấp số điện thoại' });
+    }
+
+    const user = await UserModel.findByPhone(phone.trim());
+    if (!user) return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng' });
+
+    const updated = await UserModel.updateById(user.id, {
+      full_name: full_name || user.full_name,
+      phone: phone || user.phone,
+      address: address || user.address
+    });
+
+    res.status(200).json({
+      success: true,
+      user: {
+        id: updated.id,
+        full_name: updated.full_name,
+        phone: updated.phone,
+        address: updated.address,
+        role: updated.role
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
